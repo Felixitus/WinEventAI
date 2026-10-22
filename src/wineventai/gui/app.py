@@ -1,9 +1,9 @@
-"""Einstiegspunkt der Oberflaeche.
+"""Entry point of the user interface.
 
-PySide6 ist eine OPTIONALE Abhaengigkeit (``pip install -e ".[gui]"`` im
-Projektordner - das Paket liegt nicht auf PyPI). Die
-Kommandozeile muss ohne Qt laufen: Sie ist der Weg fuer Server, fuer
-Softwareverteilung und fuer Sitzungen ohne grafische Anmeldung.
+PySide6 is an OPTIONAL dependency (``pip install -e ".[gui]"`` in the project
+folder - the package is not on PyPI). The command line must run without Qt: it
+is the way for servers, for software distribution and for sessions without a
+graphical logon.
 """
 
 from __future__ import annotations
@@ -13,28 +13,28 @@ import sys
 from ..config import Config, load_config
 
 GUI_MISSING = (
-    "Die Oberflaeche braucht PySide6.\n"
+    "The user interface needs PySide6.\n"
     "\n"
-    "Nachinstallieren im Projektordner (dort, wo pyproject.toml liegt):\n"
+    "Install it in the project folder (where pyproject.toml is):\n"
     "    pip install -e \".[gui]\"\n"
     "\n"
-    "Oder nur die Bibliothek, ohne das Paket neu zu installieren:\n"
+    "Or only the library, without reinstalling the package:\n"
     "    pip install PySide6\n"
     "\n"
-    "WinEventAI liegt nicht auf PyPI - 'pip install wineventai[gui]' ohne\n"
-    "Pfadangabe findet es nicht. Die Kommandozeile funktioniert auch ohne Qt."
+    "WinEventAI is not on PyPI - 'pip install wineventai[gui]' without a path\n"
+    "does not find it. The command line works without Qt as well."
 )
 
 
 def gui_available() -> bool:
-    """Prueft, ob Qt vorhanden ist, ohne es zu importieren."""
+    """Checks whether Qt is present without importing it."""
     from importlib.util import find_spec
 
     return find_spec("PySide6") is not None
 
 
 def run_gui(config: Config | None = None) -> int:
-    """Startet das Fenster und gibt den Rueckgabewert der Anwendung zurueck."""
+    """Starts the window and returns the exit code of the application."""
     if not gui_available():
         print(GUI_MISSING, file=sys.stderr)
         return 3
@@ -54,7 +54,7 @@ def run_gui(config: Config | None = None) -> int:
     return int(app.exec())
 
 
-def main() -> int:  # pragma: no cover - Einstiegspunkt
+def main() -> int:  # pragma: no cover - entry point
     return run_gui()
 
 

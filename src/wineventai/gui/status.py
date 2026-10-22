@@ -1,8 +1,8 @@
-"""Umgebungspruefung fuer die Statusleiste.
+"""Environment check for the status bar.
 
-Dieselben Pruefungen wie ``wineventai doctor``, nur als Datenstruktur statt als
-Konsolenausgabe. Sie laufen in einem eigenen Thread: Die Ollama-Abfrage geht
-ueber das Netz und darf das Fenster beim Start nicht blockieren.
+The same checks as ``wineventai doctor``, only as a data structure instead of
+console output. They run in a thread of their own: the Ollama query goes over
+the network and must not block the window at startup.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from ..rules.loader import RuleLoadError, load_rules
 
 @dataclass(slots=True)
 class Environment:
-    """Was das Werkzeug ueber seine Umgebung weiss."""
+    """What the tool knows about its environment."""
 
     platform: str = sys.platform
     admin: bool = False
@@ -35,6 +35,7 @@ class Environment:
 
     ollama_reachable: bool = False
     ollama_model_present: bool = False
+    ollama_remote_model: bool = False
     ollama_models: list[str] = field(default_factory=list)
     ollama_detail: str | None = None
     ollama_enabled: bool = True
@@ -42,57 +43,71 @@ class Environment:
 
     @property
     def ready_to_collect(self) -> bool:
-        """Ohne PowerShell laesst sich nichts erheben - das ist der harte Blocker."""
+        """Without PowerShell nothing can be collected - that is the hard blocker."""
         return self.powershell is not None
 
+    @property
+    def ollama_usable(self) -> bool:
+        return (
+            self.ollama_reachable and self.ollama_model_present and not self.ollama_remote_model
+        )
+
     def ollama_line(self) -> tuple[str, bool]:
-        """Text und ob es ein Problem ist."""
+        """Text and whether it is a problem."""
         if not self.ollama_enabled:
-            return "Modell: abgeschaltet", False
-        if self.ollama_reachable and self.ollama_model_present:
-            return f"Modell: {self.model_name}", False
+            return "Model: disabled", False
+        if self.ollama_remote_model:
+            return f"Cloud model {self.model_name} refused", True
+        if self.ollama_usable:
+            return f"Model: {self.model_name}", False
         if self.ollama_reachable:
-            return f"Modell {self.model_name} fehlt", True
-        return "Ollama nicht erreichbar", True
+            return f"Model {self.model_name} missing", True
+        return "No Ollama - rule engine only", True
 
     def powershell_line(self) -> tuple[str, bool]:
         if self.powershell:
-            return "PowerShell: bereit", False
-        return "PowerShell fehlt", True
+            return "PowerShell: ready", False
+        return "PowerShell missing", True
 
     def admin_line(self) -> tuple[str, bool]:
         if self.admin:
-            return "Adminrechte: ja", False
-        return "ohne Adminrechte", True
+            return "Admin rights: yes", False
+        return "without admin rights", True
 
     def tooltip(self) -> str:
-        """Die Langfassung - die Statusleiste bleibt kurz, der Tooltip erklaert."""
-        zeilen = [
-            f"PowerShell: {self.powershell or 'nicht gefunden - Erhebung nicht moeglich'}",
-            "Adminrechte: "
-            + ("ja" if self.admin else "nein - der Security-Kanal bleibt gesperrt"),
-            f"Konfiguration: {self.config_path}"
-            + ("" if self.config_exists else "  (nicht vorhanden)"),
+        """The long version - the status bar stays short, the tooltip explains."""
+        lines = [
+            f"PowerShell: {self.powershell or 'not found - collection not possible'}",
+            "Admin rights: "
+            + ("yes" if self.admin else "no - the Security channel stays locked"),
+            f"Configuration: {self.config_path}"
+            + ("" if self.config_exists else "  (not present)"),
         ]
         if not self.ollama_enabled:
-            zeilen.append("Sprachmodell: per Konfiguration abgeschaltet")
-        elif self.ollama_reachable and self.ollama_model_present:
-            zeilen.append(f"Ollama: erreichbar, Modell {self.model_name}")
+            lines.append("Language model: disabled by configuration")
+        elif self.ollama_remote_model:
+            lines.append(
+                f"Ollama: {self.model_name} runs on a remote service. It is refused "
+                "without 'ai.allow_cloud: true'; the report is built from the rule engine."
+            )
+        elif self.ollama_usable:
+            lines.append(f"Ollama: reachable, model {self.model_name}")
         elif self.ollama_reachable:
-            verfuegbar = ", ".join(self.ollama_models[:6]) or "keine"
-            zeilen.append(
-                f"Ollama: erreichbar, aber {self.model_name} fehlt. "
-                f"Vorhanden: {verfuegbar}"
+            available = ", ".join(self.ollama_models[:6]) or "none"
+            lines.append(
+                f"Ollama: reachable, but {self.model_name} is missing. "
+                f"Present: {available}"
             )
         else:
-            zeilen.append(
-                f"Ollama: nicht erreichbar. {self.ollama_detail or ''}".strip()
+            lines.append(
+                "Ollama: not reachable. The report is complete without it - it is built "
+                f"from the rule engine. {self.ollama_detail or ''}".strip()
             )
-        return "\n".join(zeilen)
+        return "\n".join(lines)
 
 
 def probe_environment(config: Config) -> Environment:
-    """Sammelt den Umgebungszustand. Wirft nicht."""
+    """Collects the environment state. Does not raise."""
     env = Environment(admin=is_admin(), model_name=config.ai.model)
 
     try:
@@ -113,8 +128,8 @@ def probe_environment(config: Config) -> Environment:
     try:
         with KnowledgeBase.open_default() as kb:
             env.kb_entries = kb.count()
-    except Exception as exc:  # noqa: BLE001 - eine kaputte KB darf den Start nicht toeten
-        env.rules_error = env.rules_error or f"Wissensbasis: {exc}"
+    except Exception as exc:  # noqa: BLE001 - a broken KB must not kill the startup
+        env.rules_error = env.rules_error or f"Knowledge base: {exc}"
 
     path = user_config_path()
     env.config_path = str(path)
@@ -144,12 +159,13 @@ def _probe_ollama(config: Config, env: Environment) -> None:
     state = client.status()
     env.ollama_reachable = state.reachable
     env.ollama_model_present = state.model_present
+    env.ollama_remote_model = state.remote_model and not state.cloud_allowed
     env.ollama_models = list(state.models)
     env.ollama_detail = state.detail
 
 
 class EnvironmentProbe(QObject):
-    """Fuehrt ``probe_environment`` im Hintergrund aus."""
+    """Runs ``probe_environment`` in the background."""
 
     done = Signal(object)
 
@@ -162,7 +178,7 @@ class EnvironmentProbe(QObject):
 
 
 class ProbeHandle:
-    """Haelt Thread und Sonde zusammen - dieselbe Klammer wie beim Lauf-Worker."""
+    """Keeps thread and probe together - the same clamp as for the run worker."""
 
     def __init__(self, config: Config) -> None:
         self.probe = EnvironmentProbe(config)

@@ -1,8 +1,8 @@
-"""Regeln laden: mitgelieferte Defaults plus Overlay aus %PROGRAMDATA%.
+"""Loading rules: bundled defaults plus overlay from %PROGRAMDATA%.
 
-Zusammengefuehrt wird nach ``id``. Die Herkunft wandert in ``RuleDefinition.source``
-und spaeter in den Bericht - sonst diskutiert irgendwann jemand ueber einen
-Befund, den eine lokale YAML erzeugt hat, die niemand kennt.
+Merging is by ``id``. The origin goes into ``RuleDefinition.source`` and later
+into the report - otherwise someone will eventually argue about a finding that
+was produced by a local YAML nobody knows about.
 """
 
 from __future__ import annotations
@@ -27,37 +27,37 @@ BUILTIN_FILES = (
 
 
 class RuleLoadError(ValueError):
-    """Eine Regeldatei liess sich nicht laden."""
+    """A rule file could not be loaded."""
 
 
 def _load_file(path: Path, source: str) -> list[RuleDefinition]:
     try:
         payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
-        raise RuleLoadError(f"{path}: YAML nicht lesbar: {exc}") from exc
+        raise RuleLoadError(f"{path}: YAML not readable: {exc}") from exc
 
     if payload is None:
         return []
     if isinstance(payload, dict) and "rules" in payload:
         payload = payload["rules"]
     if not isinstance(payload, list):
-        raise RuleLoadError(f"{path}: erwartet wurde eine Liste von Regeln")
+        raise RuleLoadError(f"{path}: expected a list of rules")
 
     rules: list[RuleDefinition] = []
     for index, entry in enumerate(payload):
         if not isinstance(entry, dict):
-            raise RuleLoadError(f"{path}: Eintrag {index} ist keine Abbildung")
+            raise RuleLoadError(f"{path}: entry {index} is not a mapping")
         entry = {**entry, "source": source}
         try:
             rules.append(RuleDefinition.model_validate(entry))
         except ValidationError as exc:
             rule_id = entry.get("id", f"#{index}")
-            raise RuleLoadError(f"{path}: Regel {rule_id} ist ungueltig:\n{exc}") from exc
+            raise RuleLoadError(f"{path}: rule {rule_id} is invalid:\n{exc}") from exc
     return rules
 
 
 def builtin_rules() -> list[RuleDefinition]:
-    """Die mitgelieferten Regeln."""
+    """The bundled rules."""
     rules: list[RuleDefinition] = []
     for name in BUILTIN_FILES:
         path = resource_path(f"rules/builtin/{name}")
@@ -72,7 +72,7 @@ def overlay_dir(configured: str | None = None) -> Path:
 
 
 def overlay_rules(configured: str | None = None) -> list[RuleDefinition]:
-    """Regeln aus dem Overlay-Verzeichnis. Fehlt es, ist das kein Fehler."""
+    """Rules from the overlay directory. If it is missing, that is not an error."""
     directory = overlay_dir(configured)
     if not directory.is_dir():
         return []
@@ -87,20 +87,18 @@ def load_rules(
     overlay: str | None = None,
     include_security: bool = False,
 ) -> list[RuleDefinition]:
-    """Baut das wirksame Regelwerk zusammen.
+    """Assembles the effective rule set.
 
-    Sicherheitsregeln sind nur aktiv, wenn der Sicherheitsmodus eingeschaltet
-    ist. Sonst erzeugt eine 4625-Serie auf einem Terminalserver jeden Tag Laerm,
-    ohne dass jemand danach gefragt haette.
+    Security rules are only active when security mode is switched on.
+    Otherwise a 4625 series on a terminal server makes noise every day without
+    anyone having asked for it.
     """
     merged: dict[str, RuleDefinition] = {}
     for rule in builtin_rules():
         merged[rule.id] = rule
     for rule in overlay_rules(overlay):
         if rule.id in merged:
-            get_log().info(
-                "Regel ueberschrieben", regel=rule.id, herkunft=rule.source
-            )
+            get_log().info("Rule overridden", rule=rule.id, origin=rule.source)
         merged[rule.id] = rule
 
     rules = list(merged.values())

@@ -1,21 +1,20 @@
-# PyInstaller-Spezifikation fuer WinEventAI.
+# PyInstaller specification for WinEventAI.
 #
-# ONE-DIR, nicht one-file. One-file entpackt bei jedem Start nach %TEMP% und
-# sieht fuer EDR nach Packer-Verhalten aus. Fuer ein Werkzeug, das
-# Sicherheitsprotokolle liest, ist das die denkbar schlechteste Signatur.
+# ONE-DIR, not one-file. One-file unpacks to %TEMP% on every start and looks
+# like packer behavior to EDR. For a tool that reads security logs that is the
+# worst possible signature.
 #
-# Aufruf:  pyinstaller packaging\wineventai.spec --noconfirm
+# Call:  pyinstaller packaging\wineventai.spec --noconfirm
 
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_submodules
 
-ROOT = Path(SPECPATH).parent  # noqa: F821 - von PyInstaller gesetzt
+ROOT = Path(SPECPATH).parent  # noqa: F821 - set by PyInstaller
 PACKAGE = ROOT / "src" / "wineventai"
 
-# Mitgelieferte Ressourcen. resource_path() findet sie spaeter ueber
-# sys._MEIPASS bzw. das Verzeichnis neben der EXE - der uebrige Code weiss
-# nichts davon.
+# Bundled resources. resource_path() later finds them via sys._MEIPASS or
+# the directory next to the EXE - the rest of the code knows nothing of it.
 datas = [
     (str(PACKAGE / "config" / "wineventai.default.yaml"), "wineventai/config"),
     (str(PACKAGE / "collect" / "scripts"), "wineventai/collect/scripts"),
@@ -27,8 +26,8 @@ datas = [
     (str(PACKAGE / "report" / "assets"), "wineventai/report/assets"),
 ]
 
-# Qt nur einsammeln, wenn es da ist: Die Kommandozeile muss sich auch ohne
-# PySide6 bauen lassen - sie ist der Weg fuer Server und Softwareverteilung.
+# Collect Qt only if it is there: the command line must also build without
+# PySide6 - it is the way for servers and software distribution.
 try:
     import PySide6  # noqa: F401
 
@@ -60,12 +59,12 @@ a = Analysis(  # noqa: F821
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
-    # Nichts davon wird gebraucht und alles davon macht das Paket gross.
+    # None of this is needed and all of it makes the package big.
     excludes=[
         "tkinter", "matplotlib", "numpy", "pandas", "PIL", "pytest",
-        # QtWebEngine waere rund 150 MB Chromium fuer eine Oberflaeche, die nur
-        # Text und Tabellen zeigt. Der HTML-Bericht wird im System-Browser
-        # geoeffnet - dort gehoert er hin, denn er wird weitergegeben.
+        # QtWebEngine would be about 150 MB of Chromium for a user interface that
+        # only shows text and tables. The HTML report opens in the system
+        # browser - that is where it belongs, because it gets passed on.
         "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.QtWebEngineQuick",
         "PySide6.QtQml", "PySide6.QtQuick", "PySide6.Qt3DCore", "PySide6.QtMultimedia",
         "PySide6.QtCharts", "PySide6.QtDataVisualization", "PySide6.QtPdf",
@@ -84,12 +83,12 @@ exe = EXE(  # noqa: F821
     name="wineventai",
     console=True,
     disable_windowed_traceback=False,
-    upx=False,  # UPX ist genau die Packer-Signatur, die wir vermeiden wollen
+    upx=False,  # UPX is exactly the packer signature we want to avoid
 )
 
-# Zweite ausfuehrbare Datei fuer die Oberflaeche: console=False, damit beim
-# Start kein schwarzes Fenster aufblitzt. Beide teilen sich dieselbe Analysis,
-# also auch dieselben Bibliotheken - das kostet keinen zweiten Satz DLLs.
+# Second executable for the user interface: console=False, so that no black
+# window flashes up on start. Both share the same Analysis, hence the same
+# libraries - that costs no second set of DLLs.
 targets = [exe]
 if HAS_QT:
     exe_gui = EXE(  # noqa: F821

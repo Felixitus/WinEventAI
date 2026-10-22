@@ -1,7 +1,7 @@
-"""Collector fuer Ereigniskanaele - live vom System oder aus einer .evtx-Datei.
+"""Collector for event channels - live from the system or from an .evtx file.
 
-Beide Faelle benutzen dasselbe PowerShell-Skript und muenden in dasselbe
-Laufverzeichnis. Der Unterschied ist ein Parameter.
+Both cases use the same PowerShell script and end up in the same run
+directory. The difference is one parameter.
 """
 
 from __future__ import annotations
@@ -29,10 +29,10 @@ SOURCE_TOOL_CACHE = "rundir:ndjson"
 
 
 def _xml_ids_for(channel: str, config: CollectConfig, entry: ChannelConfig) -> list[int]:
-    """IDs, fuer die das vollstaendige Event-XML geholt wird.
+    """IDs for which the full event XML is fetched.
 
-    Das XML kostet Zeit und Platz, liefert dafuer die benannten EventData-Felder,
-    die - anders als der Meldungstext - sprachneutral sind.
+    The XML costs time and space, but delivers the named EventData fields,
+    which - unlike the message text - are language-neutral.
     """
     if entry.with_xml:
         return list(entry.event_ids)
@@ -42,12 +42,12 @@ def _xml_ids_for(channel: str, config: CollectConfig, entry: ChannelConfig) -> l
         try:
             ids.append(int(id_part))
         except ValueError:
-            get_log().warn("xml_for-Eintrag nicht lesbar", eintrag=pair, kanal=channel)
+            get_log().warn("xml_for entry not readable", entry=pair, channel=channel)
     return sorted(set(ids))
 
 
 class EventChannelCollector:
-    """Erhebt einen Ereigniskanal ueber Get-WinEvent."""
+    """Collects one event channel via Get-WinEvent."""
 
     def __init__(
         self,
@@ -82,7 +82,7 @@ class EventChannelCollector:
                     status=SourceStatus.DISABLED,
                     requested_from_utc=self.window_from,
                     requested_to_utc=self.window_to,
-                    note="Per Konfiguration abgeschaltet.",
+                    note="Disabled by configuration.",
                 )
             )
 
@@ -93,7 +93,7 @@ class EventChannelCollector:
                     status=SourceStatus.NO_PERMISSION,
                     requested_from_utc=self.window_from,
                     requested_to_utc=self.window_to,
-                    note="Kanal erfordert Adminrechte; der Lauf hat keine.",
+                    note="Channel requires administrator rights; this run has none.",
                 )
             )
 
@@ -126,7 +126,7 @@ class EventChannelCollector:
 
         blocked = status_from_stderr(run.stderr)
         if blocked is not None:
-            log.warn("Kanal blockiert", kanal=self.entry.name)
+            log.warn("Channel blocked", channel=self.entry.name)
             return CollectedSource(
                 result=SourceResult(
                     source_id=self.source_id,
@@ -134,8 +134,8 @@ class EventChannelCollector:
                     requested_from_utc=window_from,
                     requested_to_utc=self.window_to,
                     duration_seconds=run.duration_seconds,
-                    detail="PowerShell-Ausfuehrung abgelehnt",
-                    note="Ausfuehrungsrichtlinie oder Rechte verhindern den Aufruf.",
+                    detail="PowerShell execution refused",
+                    note="Execution policy or permissions prevent the call.",
                 )
             )
 
@@ -176,20 +176,20 @@ class EventChannelCollector:
             status = SourceStatus.TIMED_OUT
         elif not parsed.completed:
             status = SourceStatus.FAILED
-            detail = error_id_from_stderr(stderr) or "keine Statuszeile"
+            detail = error_id_from_stderr(stderr) or "no status line"
         elif parsed.records_read >= self._keep_limit() and status == SourceStatus.COLLECTED:
             status = SourceStatus.TRUNCATED
 
         note = None
         if status == SourceStatus.FAILED and not parsed.completed:
             note = (
-                "Das Erhebungsskript hat keinen Abschlussstatus geliefert. Ueber diesen "
-                "Kanal ist keine Aussage moeglich - auch nicht 'keine Treffer'."
+                "The collection script returned no final status. Nothing can be said "
+                "about this channel - not even 'no hits'."
             )
         elif status in {SourceStatus.TIMED_OUT, SourceStatus.TRUNCATED}:
             note = (
-                "Nur ein Teil des angeforderten Zeitraums liegt vor. "
-                "Aussagen ueber den nicht abgedeckten Teil sind nicht moeglich."
+                "Only part of the requested period is available. "
+                "No statement is possible about the uncovered part."
             )
 
         return SourceResult(
@@ -208,11 +208,10 @@ class EventChannelCollector:
 
 
 def _covered_range(records: list[EventRecord]) -> tuple[datetime | None, datetime | None]:
-    """Tatsaechlich abgedeckter Zeitraum aus den gelesenen Records.
+    """Period actually covered by the records read.
 
-    Diese beiden Werte sind der Unterschied zwischen "keine Befunde" und
-    "sechseinhalb Tage nie gelesen". Der Bericht zeigt sie oben, nicht in einer
-    Fussnote.
+    These two values are the difference between "no findings" and "six and a
+    half days never read". The report shows them at the top, not in a footnote.
     """
     if not records:
         return None, None
@@ -221,10 +220,10 @@ def _covered_range(records: list[EventRecord]) -> tuple[datetime | None, datetim
 
 
 class CachedChannelCollector:
-    """Liest einen bereits erhobenen Kanal aus dem Laufverzeichnis.
+    """Reads an already collected channel from the run directory.
 
-    Das ist der Weg, auf dem ``analyze --run`` ohne Neuerhebung arbeitet - und
-    zugleich der Weg, auf dem Tests echte Exporte einspeisen.
+    This is how ``analyze --run`` works without collecting again - and at the
+    same time how tests feed in real exports.
     """
 
     def __init__(self, *, source_id: str, path: Path, result: SourceResult) -> None:

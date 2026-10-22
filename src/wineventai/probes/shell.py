@@ -1,15 +1,14 @@
-"""Aufruf der Sonden-Skripte und Lesen ihrer Ausgabe.
+"""Calling the probe scripts and reading their output.
 
-Die Sonden benutzen denselben Weg wie der Collector - ein mitgeliefertes ``.ps1``
-ueber ``-File``, Ausgabe als NDJSON - aber nicht denselben Leser: ``read_ndjson``
-im Collector baut ``EventRecord``-Objekte, und ein Ping-Ergebnis ist kein
-Ereignis. Hier bleibt die Nutzlast ein ``dict``, damit jede Sonde ihr eigenes
-Format behalten kann.
+The probes use the same path as the collector - a bundled ``.ps1`` via
+``-File``, output as NDJSON - but not the same reader: ``read_ndjson`` in the
+collector builds ``EventRecord`` objects, and a ping result is not an event.
+Here the payload stays a ``dict``, so every probe can keep its own format.
 
-Die Testgrenze ist dieselbe wie dort: ``read_payloads`` kennt nur einen
-Zeilen-Iterator. Damit sind alle Sonden ohne Windows testbar, und die drei
-PowerShell-Skripte bleiben das einzige, was sich nur auf dem Zielsystem
-beweisen laesst.
+The test boundary is the same as there: ``read_payloads`` only knows a line
+iterator. That makes all probes testable without Windows, and the three
+PowerShell scripts remain the only thing that can only be proven on the target
+system.
 """
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ SCRIPT_FOLDER = "probes/scripts"
 
 @dataclass(slots=True)
 class ProbePayloads:
-    """Was ein Sonden-Skript geliefert hat."""
+    """What a probe script delivered."""
 
     items: list[dict[str, object]] = field(default_factory=list)
     status: dict[str, object] | None = None
@@ -34,10 +33,10 @@ class ProbePayloads:
 
     @property
     def exception(self) -> str | None:
-        """Der .NET-Typname einer Ausnahme, falls das Skript eine gemeldet hat.
+        """The .NET type name of an exception, if the script reported one.
 
-        Der *Typname*, nicht die Meldung: ``System.UnauthorizedAccessException``
-        steht auf einem deutschen Windows genauso da wie auf einem englischen.
+        The *type name*, not the message: ``System.UnauthorizedAccessException``
+        reads the same on a German Windows as on an English one.
         """
         if not self.status:
             return None
@@ -49,7 +48,7 @@ class ProbePayloads:
 
 
 def read_payloads(lines: Iterable[str]) -> ProbePayloads:
-    """Liest NDJSON-Zeilen eines Sonden-Skripts."""
+    """Reads the NDJSON lines of a probe script."""
     result = ProbePayloads()
     log = get_log()
 
@@ -72,13 +71,13 @@ def read_payloads(lines: Iterable[str]) -> ProbePayloads:
         result.items.append(payload)
 
     if result.parse_errors:
-        log.warn("Sonde: nicht lesbare Zeilen", anzahl=result.parse_errors)
+        log.warn("Probe: unreadable lines", count=result.parse_errors)
     return result
 
 
 @dataclass(slots=True)
 class ProbeRun:
-    """Ergebnis eines Sonden-Aufrufs samt Laufzeit."""
+    """Result of a probe call including runtime."""
 
     payloads: ProbePayloads
     returncode: int
@@ -94,7 +93,7 @@ def run_probe_script(
     shell: ShellInfo,
     timeout_seconds: float,
 ) -> ProbeRun:
-    """Fuehrt ein Sonden-Skript aus und liest dessen Ausgabe."""
+    """Runs a probe script and reads its output."""
     run = run_script(
         script,
         args,

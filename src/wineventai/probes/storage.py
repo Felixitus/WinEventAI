@@ -1,18 +1,17 @@
-"""Datentraegersonde: Gesundheitswerte, SMART-Gesamtstatus, Belegung.
+"""Storage probe: health values, overall SMART status, usage.
 
-Diese Sonde meldet ALLE Datentraeger, nicht den einen aus dem Befund. Die
-Meldung von disk 51/153 nennt eine Geraeteangabe der Form
-``\\Device\\Harddisk3\\DR3``; diese Nummer laesst sich nicht zuverlaessig auf
-ein PhysicalDisk-Objekt abbilden - sie haengt an der Erkennungsreihenfolge und
-stimmt bei RAID- und Mehrpfad-Konfigurationen ohnehin nicht. Ein falsch
-zugeordneter Datentraeger waere schlimmer als gar keiner, deshalb steht der
-Vorbehalt im Ergebnistext.
+This probe reports ALL disks, not the one from the finding. The message of disk
+51/153 names a device in the form ``\\Device\\Harddisk3\\DR3``; this number
+cannot be mapped reliably onto a PhysicalDisk object - it depends on the
+detection order and is wrong with RAID and multipath configurations anyway. A
+wrongly attributed disk would be worse than none at all, so the caveat is in
+the result text.
 
-Und ein zweiter Vorbehalt, der genauso wichtig ist: Ein sauberer
-SMART-Gesamtstatus entlastet einen Datentraeger nicht. Er sagt nur, dass keiner
-der ueberwachten Schwellwerte gerissen ist. Deshalb ist ein unauffaelliges
-Ergebnis hier ausdruecklich "sagt dazu nichts" und nicht "spricht dagegen" -
-anders als bei einem Dienst, der nachweislich laeuft.
+And a second caveat that is just as important: a clean overall SMART status
+does not exonerate a disk. It only says that none of the monitored thresholds
+was crossed. An unremarkable result here is therefore explicitly "says nothing
+about it" and not "speaks against it" - unlike a service that demonstrably
+runs.
 """
 
 from __future__ import annotations
@@ -33,11 +32,11 @@ from .shell import ProbePayloads, run_probe_script
 if TYPE_CHECKING:  # pragma: no cover
     from ..rules.engine import Finding
 
-PROBE_ID = "datentraeger"
-TITLE = "Zustand der Datentraeger"
-TARGET = "alle"
+PROBE_ID = "storage"
+TITLE = "State of the disks"
+TARGET = "all"
 
-#: Befunde, die eine Datentraegermessung rechtfertigen.
+#: Findings that justify a disk measurement.
 STORAGE_EVENTS: frozenset[tuple[str, int]] = frozenset(
     {
         ("disk", 7),
@@ -59,13 +58,13 @@ STORAGE_EVENTS: frozenset[tuple[str, int]] = frozenset(
     }
 )
 
-#: Ab hier ist der freie Platz eines Volumes selbst eine Fehlerquelle.
+#: From here on the free space of a volume is itself a source of errors.
 LOW_SPACE_PERCENT = 10.0
 
-ZUORDNUNG_VORBEHALT = (
-    "Welcher dieser Datentraeger zum Befund gehoert, ist offen: Die Geraeteangabe "
-    "in der Ereignismeldung (\\Device\\HarddiskN) laesst sich nicht zuverlaessig "
-    "auf ein Geraet abbilden."
+ATTRIBUTION_CAVEAT = (
+    "Which of these disks belongs to the finding is open: the device reference "
+    "in the event message (\\Device\\HarddiskN) cannot be mapped reliably onto a "
+    "device."
 )
 
 
@@ -77,7 +76,7 @@ def _as_int(value: object) -> int | None:
 
 
 class StorageProbe:
-    """Liest Gesundheits- und Belegungswerte der Datentraeger."""
+    """Reads health and usage values of the disks."""
 
     probe_id = PROBE_ID
     title = TITLE
@@ -101,15 +100,15 @@ class StorageProbe:
             return [timed_out_result(PROBE_ID, TITLE, run.duration_seconds)]
         if run.payloads.exception or (run.returncode != 0 and not run.payloads.items):
             get_log().warn(
-                "Datentraegersonde fehlgeschlagen",
-                ausnahme=run.payloads.exception,
+                "Storage probe failed",
+                exception=run.payloads.exception,
                 code=run.returncode,
             )
             return [
                 failed_result(
                     PROBE_ID,
                     TITLE,
-                    "Die Datentraegerwerte liessen sich nicht lesen.",
+                    "The disk values could not be read.",
                     target=TARGET,
                     error=run.payloads.exception or run.stderr.strip()[:200] or None,
                 )
@@ -119,11 +118,11 @@ class StorageProbe:
 
 
 def interpret(payloads: ProbePayloads, *, duration_seconds: float = 0.0) -> ProbeResult:
-    """Fasst Datentraeger, SMART und Volumes zu einem Ergebnis zusammen."""
-    disks = payloads.of_kind("datentraeger")
+    """Combines disks, SMART and volumes into one result."""
+    disks = payloads.of_kind("disk")
     smart = payloads.of_kind("smart")
     volumes = payloads.of_kind("volume")
-    hinweise = [str(item.get("text", "")) for item in payloads.of_kind("hinweis")]
+    notes = [str(item.get("text", "")) for item in payloads.of_kind("note")]
 
     if not disks and not smart and not volumes:
         return ProbeResult(
@@ -132,27 +131,27 @@ def interpret(payloads: ProbePayloads, *, duration_seconds: float = 0.0) -> Prob
             status=ProbeStatus.UNAVAILABLE,
             target=TARGET,
             summary=(
-                "Auf diesem System liessen sich keine Datentraegerwerte lesen. "
-                "Bei virtuellen Maschinen und hinter RAID-Controllern ist das der Normalfall."
+                "No disk values could be read on this system. For virtual machines "
+                "and behind RAID controllers that is the normal case."
             ),
-            details=hinweise,
+            details=notes,
             duration_seconds=duration_seconds,
         )
 
     details = [_disk_line(disk) for disk in disks]
     details.extend(_smart_line(item) for item in smart)
     details.extend(_volume_line(item) for item in volumes if _volume_line(item))
-    details.extend(hinweise)
+    details.extend(notes)
 
-    krank = [d for d in disks if str(d.get("gesundheit", "")).lower() not in ("healthy", "")]
-    fehlerzaehler = [d for d in disks if _error_count(d) > 0]
-    vorhergesagt = [s for s in smart if s.get("ausfall_vorhergesagt")]
-    eng = [v for v in volumes if _low_space(v)]
+    unhealthy = [d for d in disks if str(d.get("health", "")).lower() not in ("healthy", "")]
+    with_errors = [d for d in disks if _error_count(d) > 0]
+    predicted = [s for s in smart if s.get("failure_predicted")]
+    tight = [v for v in volumes if _low_space(v)]
 
-    if vorhergesagt or krank:
-        betroffen = {str(d.get("name")) for d in krank}
-        betroffen |= {str(s.get("instanz")) for s in vorhergesagt}
-        anzahl = len(betroffen)
+    if predicted or unhealthy:
+        affected = {str(d.get("name")) for d in unhealthy}
+        affected |= {str(s.get("instance")) for s in predicted}
+        count = len(affected)
         return ProbeResult(
             probe_id=PROBE_ID,
             title=TITLE,
@@ -160,15 +159,15 @@ def interpret(payloads: ProbePayloads, *, duration_seconds: float = 0.0) -> Prob
             bearing=ProbeBearing.SUPPORTS,
             target=TARGET,
             summary=(
-                f"{anzahl} Datentraeger meldet einen nicht gesunden Zustand. "
-                "Vor jedem weiteren Test gehoert die Datensicherung geprueft."
+                f"{count} disk(s) report an unhealthy state. "
+                "Check the backup before any further test."
             ),
-            details=[*details, ZUORDNUNG_VORBEHALT],
+            details=[*details, ATTRIBUTION_CAVEAT],
             duration_seconds=duration_seconds,
         )
 
-    if fehlerzaehler:
-        gesamt = sum(_error_count(d) for d in fehlerzaehler)
+    if with_errors:
+        total = sum(_error_count(d) for d in with_errors)
         return ProbeResult(
             probe_id=PROBE_ID,
             title=TITLE,
@@ -176,15 +175,15 @@ def interpret(payloads: ProbePayloads, *, duration_seconds: float = 0.0) -> Prob
             bearing=ProbeBearing.SUPPORTS,
             target=TARGET,
             summary=(
-                f"Der Gesamtstatus ist unauffaellig, aber die Zuverlaessigkeitszaehler "
-                f"stehen bei {gesamt} Lese-/Schreibfehlern."
+                f"The overall status is unremarkable, but the reliability counters "
+                f"stand at {total} read/write errors."
             ),
-            details=[*details, ZUORDNUNG_VORBEHALT],
+            details=[*details, ATTRIBUTION_CAVEAT],
             duration_seconds=duration_seconds,
         )
 
-    if eng:
-        namen = ", ".join(str(v.get("laufwerk") or v.get("bezeichnung")) for v in eng)
+    if tight:
+        names = ", ".join(str(v.get("drive") or v.get("label")) for v in tight)
         return ProbeResult(
             probe_id=PROBE_ID,
             title=TITLE,
@@ -192,8 +191,8 @@ def interpret(payloads: ProbePayloads, *, duration_seconds: float = 0.0) -> Prob
             bearing=ProbeBearing.INCONCLUSIVE,
             target=TARGET,
             summary=(
-                f"Alle Datentraeger melden sich gesund, aber auf {namen} sind weniger "
-                f"als {LOW_SPACE_PERCENT:.0f} Prozent frei."
+                f"All disks report healthy, but less than {LOW_SPACE_PERCENT:.0f} percent "
+                f"is free on {names}."
             ),
             details=details,
             duration_seconds=duration_seconds,
@@ -203,15 +202,15 @@ def interpret(payloads: ProbePayloads, *, duration_seconds: float = 0.0) -> Prob
         probe_id=PROBE_ID,
         title=TITLE,
         status=ProbeStatus.OK,
-        # Bewusst nicht "spricht dagegen": Ein sauberer SMART-Status ist kein
-        # Gesundheitszeugnis. Datentraeger fallen regelmaessig aus, ohne dass
-        # vorher ein Schwellwert gerissen ist.
+        # Deliberately not "speaks against it": a clean SMART status is no
+        # certificate of health. Disks regularly fail without any threshold
+        # having been crossed before.
         bearing=ProbeBearing.INCONCLUSIVE,
         target=TARGET,
         summary=(
-            "Alle Datentraeger melden sich gesund und ohne Fehlerzaehler. Das "
-            "schliesst einen Defekt nicht aus - SMART meldet nur gerissene "
-            "Schwellwerte, und E/A-Fehler entstehen auch an Kabel und Controller."
+            "All disks report healthy and without error counters. That does not "
+            "rule out a defect - SMART only reports crossed thresholds, and I/O "
+            "errors also arise at cables and controllers."
         ),
         details=details,
         duration_seconds=duration_seconds,
@@ -219,65 +218,65 @@ def interpret(payloads: ProbePayloads, *, duration_seconds: float = 0.0) -> Prob
 
 
 def _error_count(disk: dict[str, object]) -> int:
-    return (_as_int(disk.get("lesefehler")) or 0) + (_as_int(disk.get("schreibfehler")) or 0)
+    return (_as_int(disk.get("read_errors")) or 0) + (_as_int(disk.get("write_errors")) or 0)
 
 
 def _gb(value: object) -> str | None:
-    zahl = _as_int(value)
-    if zahl is None:
+    number = _as_int(value)
+    if number is None:
         return None
-    return f"{zahl / 1024 ** 3:.0f} GB"
+    return f"{number / 1024 ** 3:.0f} GB"
 
 
 def _disk_line(disk: dict[str, object]) -> str:
-    teile = [str(disk.get("name") or "Datentraeger")]
-    if disk.get("medium"):
-        teile.append(str(disk.get("medium")))
-    groesse = _gb(disk.get("groesse_b"))
-    if groesse:
-        teile.append(groesse)
-    kopf = " · ".join(teile)
+    parts = [str(disk.get("name") or "Disk")]
+    if disk.get("media"):
+        parts.append(str(disk.get("media")))
+    size = _gb(disk.get("size_b"))
+    if size:
+        parts.append(size)
+    head = " · ".join(parts)
 
-    zusatz = [f"Gesundheit: {disk.get('gesundheit') or 'unbekannt'}"]
-    if not disk.get("zaehler_da"):
-        zusatz.append("keine Zuverlaessigkeitszaehler verfuegbar")
+    extra = [f"Health: {disk.get('health') or 'unknown'}"]
+    if not disk.get("counters_available"):
+        extra.append("no reliability counters available")
     else:
-        zusatz.append(
-            f"Lesefehler {_as_int(disk.get('lesefehler')) or 0}, "
-            f"Schreibfehler {_as_int(disk.get('schreibfehler')) or 0}"
+        extra.append(
+            f"read errors {_as_int(disk.get('read_errors')) or 0}, "
+            f"write errors {_as_int(disk.get('write_errors')) or 0}"
         )
-        stunden = _as_int(disk.get("betriebsstunden"))
-        if stunden:
-            zusatz.append(f"{stunden} Betriebsstunden")
-        temperatur = _as_int(disk.get("temperatur_c"))
-        if temperatur:
-            zusatz.append(f"{temperatur} °C")
-    return f"{kopf} — " + ", ".join(zusatz)
+        hours = _as_int(disk.get("power_on_hours"))
+        if hours:
+            extra.append(f"{hours} power-on hours")
+        temperature = _as_int(disk.get("temperature_c"))
+        if temperature:
+            extra.append(f"{temperature} °C")
+    return f"{head} — " + ", ".join(extra)
 
 
 def _smart_line(item: dict[str, object]) -> str:
-    zustand = "Ausfall vorhergesagt" if item.get("ausfall_vorhergesagt") else "unauffaellig"
-    return f"SMART-Gesamtstatus {item.get('instanz') or ''}: {zustand}".strip()
+    state = "failure predicted" if item.get("failure_predicted") else "unremarkable"
+    return f"Overall SMART status {item.get('instance') or ''}: {state}".strip()
 
 
 def _low_space(volume: dict[str, object]) -> bool:
-    groesse = _as_int(volume.get("groesse_b")) or 0
-    frei = _as_int(volume.get("frei_b"))
-    if not groesse or frei is None:
+    size = _as_int(volume.get("size_b")) or 0
+    free = _as_int(volume.get("free_b"))
+    if not size or free is None:
         return False
-    return (frei / groesse) * 100.0 < LOW_SPACE_PERCENT
+    return (free / size) * 100.0 < LOW_SPACE_PERCENT
 
 
 def _volume_line(volume: dict[str, object]) -> str:
-    name = volume.get("laufwerk") or volume.get("bezeichnung")
+    name = volume.get("drive") or volume.get("label")
     if not name:
         return ""
-    groesse = _as_int(volume.get("groesse_b")) or 0
-    frei = _as_int(volume.get("frei_b"))
-    if not groesse or frei is None:
-        return f"Volume {name}: Belegung unbekannt"
-    anteil = (frei / groesse) * 100.0
+    size = _as_int(volume.get("size_b")) or 0
+    free = _as_int(volume.get("free_b"))
+    if not size or free is None:
+        return f"Volume {name}: usage unknown"
+    share = (free / size) * 100.0
     return (
-        f"Volume {name} ({volume.get('dateisystem') or '?'}): "
-        f"{_gb(frei)} von {_gb(groesse)} frei ({anteil:.0f} %)"
+        f"Volume {name} ({volume.get('file_system') or '?'}): "
+        f"{_gb(free)} of {_gb(size)} free ({share:.0f} %)"
     )

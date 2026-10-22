@@ -1,9 +1,9 @@
-"""Eigenes Anwendungslog, strikt getrennt vom analysierten Material.
+"""The tool's own application log, strictly separate from the analyzed material.
 
-Das Anwendungslog ist JSONL. Es landet im Laufverzeichnis unter ``applog.jsonl``
-und - solange kein Laufverzeichnis existiert - nur auf der Konsole. Keine Zeile
-dieses Logs darf jemals in den Bericht wandern; umgekehrt wird kein analysiertes
-Event hier hineingeschrieben.
+The application log is JSONL. It goes into the run directory as
+``applog.jsonl`` and - as long as no run directory exists - only to the
+console. No line of this log may ever end up in the report; conversely, no
+analyzed event is written into it.
 """
 
 from __future__ import annotations
@@ -18,11 +18,11 @@ _LEVELS = {"debug": 10, "info": 20, "warn": 30, "error": 40}
 
 
 class AppLog:
-    """Minimaler strukturierter Logger ohne Abhaengigkeit auf ``logging``.
+    """Minimal structured logger without depending on ``logging``.
 
-    Der Verzicht auf ``logging`` ist Absicht: Das Werkzeug startet PowerShell und
-    liest fremde Protokolle; eine global konfigurierte Logging-Hierarchie, in die
-    Fremdcode hineinschreibt, ist an dieser Stelle mehr Risiko als Nutzen.
+    Avoiding ``logging`` is intentional: the tool starts PowerShell and reads
+    foreign logs; a globally configured logging hierarchy that third-party code
+    writes into is more risk than benefit here.
     """
 
     def __init__(self, level: str = "info", stream: TextIO | None = None) -> None:
@@ -32,7 +32,7 @@ class AppLog:
         self._path: Path | None = None
 
     def attach_file(self, path: Path) -> None:
-        """Haengt das Anwendungslog zusaetzlich an eine Datei im Laufverzeichnis."""
+        """Additionally attaches the application log to a file in the run directory."""
         self.detach_file()
         path.parent.mkdir(parents=True, exist_ok=True)
         self._file = path.open("a", encoding="utf-8")
@@ -84,12 +84,12 @@ _default = AppLog()
 
 
 def get_log() -> AppLog:
-    """Liefert das prozessweite Anwendungslog."""
+    """Returns the process-wide application log."""
     return _default
 
 
 def configure(level: str = "info", stream: TextIO | None = None) -> AppLog:
-    """Setzt Schwelle und Ausgabestrom des prozessweiten Anwendungslogs."""
+    """Sets threshold and output stream of the process-wide application log."""
     global _default
     _default.detach_file()
     _default = AppLog(level=level, stream=stream)

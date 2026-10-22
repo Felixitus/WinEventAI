@@ -1,9 +1,9 @@
-"""WinEventAI - lokales Diagnosewerkzeug fuer Windows-Ereignisprotokolle.
+"""WinEventAI - local diagnostic tool for Windows event logs.
 
-Die Pipeline ist strikt geschichtet: Collector -> Normalizer -> Enricher ->
-Rule-Engine -> AI-Layer -> Reporter. Die Grenze zwischen Erhebung und Auswertung
-ist das Laufverzeichnis (siehe ``collect.rundir``); alles ab dem Normalizer liest
-ausschliesslich von dort.
+The pipeline is strictly layered: collector -> normalizer -> enricher ->
+rule engine -> AI layer -> reporter. The boundary between collection and
+analysis is the run directory (see ``collect.rundir``); everything from the
+normalizer onward reads exclusively from there.
 """
 
-__version__ = "1.3.0"
+__version__ = "2.0.0"

@@ -1,15 +1,15 @@
-"""Boot-Sessions aus den Protokollmarkern.
+"""Boot sessions from the log markers.
 
-Marker:
+Markers:
 
-* ``EventLog 6005``  - Protokolldienst gestartet, also Beginn einer Session
-* ``EventLog 6006``  - Protokolldienst gestoppt, also sauberes Herunterfahren
-* ``EventLog 6008``  - das VORIGE Herunterfahren war unerwartet
-* ``Kernel-Power 41`` - System wurde ohne sauberes Herunterfahren neu gestartet
+* ``EventLog 6005``  - event log service started, i.e. a session begins
+* ``EventLog 6006``  - event log service stopped, i.e. a clean shutdown
+* ``EventLog 6008``  - the PREVIOUS shutdown was unexpected
+* ``Kernel-Power 41`` - the system restarted without shutting down cleanly
 
-Der Strom laeuft absteigend, Sessions werden also rueckwaerts entdeckt.
-Session 0 ist die neueste. ``clean_shutdown`` bleibt ``None``, wenn das
-Zeitfenster den Uebergang gar nicht enthaelt - geraten wird nicht.
+The stream runs descending, so sessions are discovered backwards. Session 0 is
+the newest. ``clean_shutdown`` stays ``None`` if the time window does not
+contain the transition at all - nothing is guessed.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ KERNEL_POWER = ("Microsoft-Windows-Kernel-Power", 41)
 
 
 class BootSession(BaseModel):
-    """Ein Zeitraum zwischen zwei Startvorgaengen."""
+    """A period between two boots."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -41,12 +41,12 @@ class BootSession(BaseModel):
     @property
     def label(self) -> str:
         if self.index == 0:
-            return "laufende Sitzung"
-        return f"Sitzung -{self.index}"
+            return "current session"
+        return f"session -{self.index}"
 
 
 class BootTracker:
-    """Vergibt Session-Indizes waehrend des absteigenden Durchlaufs."""
+    """Assigns session indices during the descending pass."""
 
     def __init__(self) -> None:
         self.sessions: list[BootSession] = [BootSession(index=0)]
@@ -63,7 +63,7 @@ class BootTracker:
         return self.sessions[index]
 
     def observe(self, record: EventRecord) -> int:
-        """Ordnet einen Record einer Session zu und wertet Marker aus."""
+        """Assigns a record to a session and evaluates markers."""
         session = self._session(self._current)
         session.event_count += 1
         if session.end_utc is None:
@@ -72,8 +72,8 @@ class BootTracker:
         key = (record.provider, record.event_id)
 
         if key in (UNEXPECTED_SHUTDOWN, KERNEL_POWER):
-            # Diese Marker stehen beim Hochfahren und sagen etwas ueber die
-            # VORIGE, also aeltere Sitzung aus.
+            # These markers appear at boot and say something about the
+            # PREVIOUS, i.e. older, session.
             self._pending_unclean = True
             session.unexpected_marker_ids.append(record.event_id)
 
@@ -94,5 +94,5 @@ class BootTracker:
         return session.index
 
     def finish(self) -> list[BootSession]:
-        """Liefert die erkannten Sessions, neueste zuerst."""
+        """Returns the detected sessions, newest first."""
         return [session for session in self.sessions if session.event_count > 0]

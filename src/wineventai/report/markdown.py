@@ -1,4 +1,4 @@
-"""Markdown-Bericht aus demselben Modell wie HTML und JSON."""
+"""Markdown report from the same model as HTML and JSON."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ from .model import ReportModel
 
 
 def _dt(value: datetime | None) -> str:
-    return value.strftime("%d.%m.%Y %H:%M:%S") if value else "—"
+    return value.strftime("%Y-%m-%d %H:%M:%S") if value else "—"
 
 
 def _n(value: int) -> str:
-    return f"{value:,}".replace(",", ".")
+    return f"{value:,}"
 
 
 def render_markdown(report: ReportModel) -> str:
@@ -25,201 +25,202 @@ def render_markdown(report: ReportModel) -> str:
     add("")
     add(f"**{report.headline}**")
     add("")
-    add(f"- Betriebssystem: {report.meta.os_caption}")
-    add(f"- Erhoben: {_dt(report.meta.started_utc)} UTC "
-        f"({report.meta.timezone_name}, {report.meta.utc_offset_minutes} min Versatz)")
-    add(f"- Zeitfenster: {_dt(report.meta.requested_from_utc)} – "
+    add(f"- Operating system: {report.meta.os_caption}")
+    add(f"- Collected: {_dt(report.meta.started_utc)} UTC "
+        f"({report.meta.timezone_name}, {report.meta.utc_offset_minutes} min offset)")
+    add(f"- Time window: {_dt(report.meta.requested_from_utc)} – "
         f"{_dt(report.meta.requested_to_utc)} UTC")
-    add(f"- Ausgefuehrt von: {report.meta.account}"
-        f"{'' if report.meta.is_admin else ' (ohne Adminrechte)'}")
-    add(f"- Werkzeug: WinEventAI {report.meta.tool_version}, Lauf `{report.meta.run_id}`")
+    add(f"- Run by: {report.meta.account}"
+        f"{'' if report.meta.is_admin else ' (without admin rights)'}")
+    add(f"- Tool: WinEventAI {report.meta.tool_version}, run `{report.meta.run_id}`")
     if report.redacted:
-        add("- **Pseudonymisierte Fassung** – Zuordnungstabelle liegt separat.")
+        add("- **Pseudonymized version** – the mapping table is kept separately.")
     add("")
 
     if report.has_coverage_problem:
-        add("> **Der Zeitraum wurde nicht vollstaendig erhoben.** Aussagen ueber nicht")
-        add("> abgedeckte Zeitraeume sind nicht moeglich. Abdeckungstabelle zuerst lesen.")
+        add("> **The period was not collected completely.** No statements are possible")
+        add("> about uncovered periods. Read the coverage table first.")
         add("")
 
-    add("## 1 · Abdeckung")
+    add("## 1 · Coverage")
     add("")
-    add("| Quelle | Status | Angefordert | Abgedeckt | Gelesen | Behalten |")
-    add("| --- | --- | --- | --- | ---: | ---: |")
+    add("| Source | Status | Requested | Covered | Read | Retained | Note |")
+    add("| --- | --- | --- | --- | ---: | ---: | --- |")
     for row in report.coverage:
         marker = " ⚠" if row.inconclusive else ""
+        note = (row.note or row.hint or "").replace("|", "/")
         add(f"| `{row.source_id}` | {row.status}{marker} | {row.requested} | {row.covered} "
-            f"| {_n(row.records_read)} | {_n(row.records_retained)} |")
+            f"| {_n(row.records_read)} | {_n(row.records_retained)} | {note} |")
     add("")
-    add(f"{_n(report.total_events)} Ereignisse gelesen, "
-        f"{_n(report.distinct_groups)} verschiedene Fingerprints, "
-        f"Reduktion {report.reduction_rate * 100:.1f} Prozent.")
+    add(f"{_n(report.total_events)} events read, "
+        f"{_n(report.distinct_groups)} distinct fingerprints, "
+        f"reduction {report.reduction_rate * 100:.1f} percent.")
     add("")
 
-    add("## 2 · Befunde")
+    add("## 2 · Findings")
     add("")
     if not report.findings:
-        add("Keine Regeltreffer im abgedeckten Zeitraum.")
+        add("No rule hits in the covered period.")
         add("")
     for finding in report.findings:
         add(f"### [{finding.severity}] {finding.rule_name}")
         add("")
         add(f"- Provider/ID: `{finding.group.provider}:{finding.group.event_id}` "
-            f"(Kanal `{finding.group.channel}`)")
-        add(f"- Haeufigkeit: {_n(finding.group.count)} ×")
-        add(f"- Zeitraum: {_dt(finding.group.first_seen_utc)} – "
+            f"(channel `{finding.group.channel}`)")
+        add(f"- Count: {_n(finding.group.count)}x")
+        add(f"- Period: {_dt(finding.group.first_seen_utc)} – "
             f"{_dt(finding.group.last_seen_utc)} UTC")
-        add(f"- Regel: `{finding.rule_id}` ({finding.rule_source})")
+        add(f"- Rule: `{finding.rule_id}` ({finding.rule_source})")
         if finding.group.bursts:
             spans = ", ".join(
-                f"{hour_label(burst.hour_utc)} ({burst.count}×)"
+                f"{hour_label(burst.hour_utc)} ({burst.count}x)"
                 for burst in finding.group.bursts[:3]
             )
-            add(f"- Auffaellige Haeufung: {spans}")
+            add(f"- Conspicuous clustering: {spans}")
         add("")
-        if finding.bedeutung:
-            add(finding.bedeutung.strip())
+        if finding.meaning:
+            add(finding.meaning.strip())
             add("")
         if not finding.has_verified_meaning:
-            add(f"> Keine gesicherte Bedeutung in der Wissensbasis hinterlegt "
-                f"(Status: {finding.kb_confidence}). Aussagen dazu sind ungeprueft.")
+            add(f"> No verified meaning on record in the knowledge base "
+                f"(state: {finding.kb_confidence}). Statements about it are unverified.")
             add("")
-        if finding.typische_ursachen:
-            add("**Typische Ursachen**")
+        if finding.typical_causes:
+            add("**Typical causes**")
             add("")
-            for item in finding.typische_ursachen:
+            for item in finding.typical_causes:
                 add(f"- {item}")
             add("")
-        if finding.empfohlene_checks:
-            add("**Empfohlene Pruefschritte**")
+        if finding.recommended_checks:
+            add("**Recommended checks**")
             add("")
-            for item in finding.empfohlene_checks:
+            for item in finding.recommended_checks:
                 add(f"- {item}")
             add("")
 
         if finding.probes:
-            add("**Messungen zum aktuellen Zustand**")
+            add("**Measurements of the current state**")
             add("")
             for probe in finding.probes:
-                ziel = f" ({probe.target})" if probe.target else ""
-                add(f"- [{probe.status}] {probe.title}{ziel} — {probe.bearing}")
+                target = f" ({probe.target})" if probe.target else ""
+                add(f"- [{probe.status}] {probe.title}{target} — {probe.bearing}")
                 if probe.summary:
                     add(f"  - {probe.summary}")
-                for zeile in probe.details:
-                    add(f"  - {zeile}")
+                for line in probe.details:
+                    add(f"  - {line}")
                 add(f"  - *{probe.age_note()}*")
             add("")
 
         ai = report.ai.for_finding(finding.finding_id)
         if ai and ai.explanation:
-            add("**Einschaetzung des Sprachmodells**")
+            add("**Assessment by the language model**")
             add("")
-            add(ai.explanation.zusammenfassung.strip())
+            add(ai.explanation.summary.strip())
             add("")
-            for statement in ai.explanation.hypothesen:
-                mark = "" if statement.verified else " *(verworfen)*"
+            for statement in ai.explanation.hypotheses:
+                mark = "" if statement.verified else " *(rejected)*"
                 evidence = " · ".join(
                     f"{item.provider}:{item.event_id} @ {_dt(item.timestamp_utc)}"
                     for item in statement.evidence
                 )
-                add(f"- [{statement.confidence}]{mark} {statement.aussage}")
-                add(f"  - Belege: {evidence}")
+                add(f"- [{statement.confidence}]{mark} {statement.statement}")
+                add(f"  - Evidence: {evidence}")
                 if not statement.verified and statement.verification_note:
-                    add(f"  - Grund: {statement.verification_note}")
+                    add(f"  - Reason: {statement.verification_note}")
             add("")
         elif ai and ai.note:
-            add(f"> Sprachmodell: {ai.note}")
+            add(f"> Language model: {ai.note}")
             add("")
-        if finding.referenz:
-            add(f"Referenz: {finding.referenz}")
+        if finding.reference:
+            add(f"Reference: {finding.reference}")
             add("")
 
-    add("## 3 · Boot-Sitzungen")
+    add("## 3 · Boot sessions")
     add("")
     if report.boot_sessions:
-        add("| Sitzung | Beginn (UTC) | Ende (UTC) | Herunterfahren | Ereignisse |")
+        add("| Session | Start (UTC) | End (UTC) | Shutdown | Events |")
         add("| --- | --- | --- | --- | ---: |")
         for session in report.boot_sessions:
             if session.clean_shutdown is None:
-                shutdown = "unbekannt"
+                shutdown = "unknown"
             else:
-                shutdown = "sauber" if session.clean_shutdown else "**unsauber**"
+                shutdown = "clean" if session.clean_shutdown else "**unclean**"
             add(f"| {session.label} | {_dt(session.start_utc)} | {_dt(session.end_utc)} "
                 f"| {shutdown} | {_n(session.event_count)} |")
     else:
-        add("Keine Sitzungsmarker im Zeitfenster.")
+        add("No session markers in the time window.")
     add("")
 
-    if report.ai.correlation and report.ai.correlation.vorfaelle:
-        add("## 4 · Zusammenhaenge")
+    if report.ai.correlation and report.ai.correlation.incidents:
+        add("## 4 · Connections")
         add("")
-        for vorfall in report.ai.correlation.vorfaelle:
-            mark = "" if vorfall.verified else " *(verworfen)*"
-            add(f"### {vorfall.titel} [{vorfall.confidence}]{mark}")
+        for incident in report.ai.correlation.incidents:
+            mark = "" if incident.verified else " *(rejected)*"
+            add(f"### {incident.title} [{incident.confidence}]{mark}")
             add("")
-            add(vorfall.begruendung.strip())
+            add(incident.rationale.strip())
             add("")
-            add(f"Befunde: {' · '.join(vorfall.befund_ids)}")
+            add(f"Findings: {' · '.join(incident.finding_ids)}")
             add("")
 
     if report.security.enabled:
-        add("## 5 · Sicherheitsmodus")
+        add("## 5 · Security mode")
         add("")
         add(f"> {report.security.disclaimer}")
         add("")
         if report.security.not_logged:
-            add("### Blinde Flecken")
+            add("### Blind spots")
             add("")
-            add("Diese Indikatoren entstehen auf diesem System gar nicht. "
-                "Ihr Fehlen ist *nicht* als Unauffaelligkeit zu lesen.")
+            add("These indicators do not arise on this system at all. "
+                "Their absence must *not* be read as inconspicuousness.")
             add("")
             for entry in report.security.not_logged:
                 ids = ", ".join(str(value) for value in entry.event_ids)
                 add(f"- `{ids}` – {entry.subcategory}: **{entry.state}**. {entry.hint}")
-                if entry.vorschlag:
-                    add(f"  - Befehl: `{entry.vorschlag['befehl']}`")
-                    add(f"  - Wirkung: {entry.vorschlag['wirkung']}")
-                    add(f"  - Risiko: {entry.vorschlag['risiko']}")
-                    add(f"  - Rueckbau: `{entry.vorschlag['rueckbau']}`")
+                if entry.suggestion:
+                    add(f"  - Command: `{entry.suggestion['command']}`")
+                    add(f"  - Effect: {entry.suggestion['effect']}")
+                    add(f"  - Risk: {entry.suggestion['risk']}")
+                    add(f"  - Rollback: `{entry.suggestion['rollback']}`")
             add("")
         if report.security.gaps:
-            add("### Luecken in der Zeitachse")
+            add("### Gaps in the timeline")
             add("")
             for gap in report.security.gaps[:10]:
                 add(f"- {gap.description}")
             add("")
         if report.security.findings:
-            add("### Indikatoren mit Treffer")
+            add("### Indicators with hits")
             add("")
             for finding in report.security.findings:
                 add(f"- [{finding.severity}] {finding.rule_name} – "
-                    f"{_n(finding.group.count)} × bis {_dt(finding.group.last_seen_utc)} UTC")
+                    f"{_n(finding.group.count)}x until {_dt(finding.group.last_seen_utc)} UTC")
             add("")
         else:
-            add("Keine Treffer bei den ausgewerteten Indikatoren.")
+            add("No hits for the evaluated indicators.")
             add("")
 
     noise_heading = 6 if report.security.enabled else 5
-    add(f"## {noise_heading} · Unterdruecktes Rauschen")
+    add(f"## {noise_heading} · Suppressed noise")
     add("")
     if report.noise:
         for finding in report.noise:
             add(f"- {finding.rule_name} (`{finding.group.provider}:"
-                f"{finding.group.event_id}`): {_n(finding.group.count)} ×")
+                f"{finding.group.event_id}`): {_n(finding.group.count)}x")
     else:
-        add("Nichts als Rauschen klassifiziert.")
+        add("Nothing classified as noise.")
     add("")
 
-    add(f"## {noise_heading + 1} · Hinweise")
+    add(f"## {noise_heading + 1} · Notes")
     add("")
     add(report.ai_note)
     add("")
     if report.unknown_ids:
-        add(f"{len(report.unknown_ids)} Provider/ID-Paare ohne gesicherten "
-            "Wissensbasis-Eintrag – siehe `unknown_ids.csv` im Laufverzeichnis.")
+        add(f"{len(report.unknown_ids)} provider/id pairs without a verified "
+            "knowledge-base entry – see `unknown_ids.csv` in the run directory.")
         add("")
-    add(f"Erzeugt {_dt(report.generated_utc)} UTC. Read-only: "
-        "Es wurde nichts am System geaendert.")
+    add(f"Generated {_dt(report.generated_utc)} UTC. Read-only: "
+        "nothing on the system was changed.")
     add("")
 
     return "\n".join(lines)

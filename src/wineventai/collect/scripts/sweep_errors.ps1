@@ -1,29 +1,29 @@
 <#
-    sweep_errors.ps1 - Kritisch/Fehler aus allen aktiven Kanaelen als NDJSON.
+    sweep_errors.ps1 - critical/error events from every active channel as NDJSON.
 
-    Ablauf und Zeilenarten:
+    Flow and line kinds:
 
-      {"__plan":    {"channels": [...], "skipped": {...}}}   genau einmal, zuerst
-      { Record }                                             je Ereignis
-      {"__channel": {"log": ..., "records": n, "exception": ...}}  nach jedem Kanal
-      {"__status":  {...}}                                   zum Schluss
+      {"__plan":    {"channels": [...], "skipped": {...}}}   exactly once, first
+      { record }                                             per event
+      {"__channel": {"log": ..., "records": n, "exception": ...}}  after each channel
+      {"__status":  {...}}                                   at the end
 
-    Bewusste Entscheidungen:
+    Deliberate decisions:
 
-    * Der Plan steht VOR dem ersten Record. Bricht der aufrufende Prozess wegen
-      Zeitlimit ab, weiss er dadurch, welche Kanaele nie erreicht wurden - und
-      meldet sie als abgebrochen statt als leer.
-    * Gefiltert wird ueber den numerischen Level in der FilterHashtable, also im
-      Event-Log-Dienst. LevelDisplayName ist lokalisiert und taugt nicht.
-    * LogType wird ueber den Enum-NAMEN verglichen ("Operational"), der nicht
-      uebersetzt wird.
-    * -ListLog laeuft mit SilentlyContinue statt Stop: Ohne Adminrechte sind
-      einzelne Kanaele nicht lesbar, und Stop wuerde die ganze Liste beim ersten
-      davon abbrechen. Die nicht lesbaren werden gezaehlt und gemeldet.
-    * Listen kommen als Zeichenkette mit '|' getrennt, nicht als [string[]]:
-      Ueber -File ist die Array-Umwandlung nicht verlaesslich belegt.
-    * Kein Event-XML: Der Sweep soll breit und billig sein. Wo EventData
-      gebraucht wird, gehoert der Kanal in die feste Kanalliste.
+    * The plan comes BEFORE the first record. If the calling process aborts on
+      its time limit, it therefore knows which channels were never reached -
+      and reports them as timed out instead of empty.
+    * Filtering uses the numeric level in the FilterHashtable, i.e. inside the
+      event log service. LevelDisplayName is localized and useless.
+    * LogType is compared by the enum NAME ("Operational"), which is not
+      translated.
+    * -ListLog runs with SilentlyContinue instead of Stop: without admin rights
+      individual channels are not readable, and Stop would abort the whole list
+      at the first of them. The unreadable ones are counted and reported.
+    * Lists arrive as a '|'-separated string, not as [string[]]: the array
+      conversion via -File is not reliable (observed failing for [int[]]).
+    * No event XML: the sweep is meant to be broad and cheap. Where EventData is
+      needed, the channel belongs in the fixed channel list.
 #>
 [CmdletBinding()]
 param(
@@ -60,8 +60,8 @@ try {
 
     [int[]] $levelList = @(Split-Arg $Levels | ForEach-Object { [int]$_ })
 
-    # Hashtables in PowerShell vergleichen Schluessel ohne Ruecksicht auf
-    # Gross-/Kleinschreibung - genau wie Windows bei Kanalnamen.
+    # PowerShell hashtables compare keys case-insensitively - just like
+    # Windows does with channel names.
     $typeSet = @{}
     foreach ($t in (Split-Arg $LogTypes)) { $typeSet[$t] = $true }
     $excludeSet = @{}
@@ -70,9 +70,9 @@ try {
     $skipped = [ordered]@{ disabled = 0; type = 0; excluded = 0; empty = 0; unreadable = 0 }
     $listErrors = $null
     $logs = @(Get-WinEvent -ListLog * -ErrorAction SilentlyContinue -ErrorVariable listErrors)
-    # Gezaehlt wird nur die FullyQualifiedErrorId "LogInfoUnavailable" - sie
-    # ist sprachneutral und steht (auf Windows 11 / PS 5.1 beobachtet) genau
-    # einmal je Kanal, dessen Metadaten der Lauf nicht lesen darf.
+    # Only the FullyQualifiedErrorId "LogInfoUnavailable" is counted - it is
+    # language-neutral and appears (observed on Windows 11 / PS 5.1) exactly
+    # once per channel whose metadata the run may not read.
     if ($listErrors) {
         $skipped.unreadable = @($listErrors | Where-Object {
             $_.FullyQualifiedErrorId -like 'LogInfoUnavailable*'
@@ -84,8 +84,8 @@ try {
         if ($excludeSet.ContainsKey($log.LogName))      { $skipped.excluded++; continue }
         if (-not $log.IsEnabled)                         { $skipped.disabled++; continue }
         if (-not $typeSet.ContainsKey([string]$log.LogType)) { $skipped.type++; continue }
-        # RecordCount ist $null, wenn die Metadaten nicht lesbar sind. Dann wird
-        # trotzdem abgefragt - der Kanal meldet seinen Fehler dann selbst.
+        # RecordCount is $null if the metadata is not readable. The channel is
+        # queried anyway - it then reports its own error.
         if ($null -ne $log.RecordCount -and $log.RecordCount -eq 0) { $skipped.empty++; continue }
         $planned.Add($log.LogName)
     }
@@ -143,8 +143,8 @@ try {
             }
         }
         catch {
-            # Typname und FullyQualifiedErrorId statt Text - lokalisierungsfest.
-            # "Keine Treffer" ist NoMatchingEventsFound.
+            # Type name and FullyQualifiedErrorId instead of text - immune to
+            # localization. "No hits" is NoMatchingEventsFound.
             $channelException = $_.Exception.GetType().FullName
             $channelErrorId = [string]$_.FullyQualifiedErrorId
         }

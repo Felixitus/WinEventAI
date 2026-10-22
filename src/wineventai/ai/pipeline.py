@@ -1,15 +1,14 @@
-"""Ablauf des KI-Layers.
+"""Flow of the AI layer.
 
-Der Bericht muss auch ohne Modell vollstaendig entstehen. Deshalb ist jeder
-Schritt hier so gebaut, dass sein Ausfall den Lauf nicht beendet: Ollama nicht
-erreichbar, Schemaverstoss, ungedeckte Aussagen - alles endet in einem Vermerk,
-nicht in einer Ausnahme.
+The report must be complete even without a model. Every step here is therefore
+built so that its failure does not end the run: Ollama unreachable, schema
+violation, uncovered statements - everything ends in a note, not in an
+exception.
 
-Zum Retry, praeziser als im urspruenglichen Bauplan: Mit einem JSON-Schema im
-``format``-Feld ist die Dekodierung grammatikgebunden, Schemaverstoesse werden
-also selten. Der eine erlaubte Retry deckt vor allem Transportfehler und aeltere
-Ollama-Versionen ohne Schema-Unterstuetzung ab. Die eigentliche
-Verteidigungslinie ist ``verify.py``.
+On the retry, more precisely than in the original blueprint: with a JSON schema
+in the ``format`` field, decoding is grammar-bound, so schema violations become
+rare. The one allowed retry mainly covers transport errors and older Ollama
+versions without schema support. The real line of defense is ``verify.py``.
 """
 
 from __future__ import annotations
@@ -30,16 +29,20 @@ from .redaction import Redactor
 from .schema import CorrelatorOutput, ExplainerOutput, json_schema_for
 from .verify import VerificationReport, verify_correlator, verify_explainer
 
-EXPLAINER_PROMPT = "ai/prompts/explainer.de.txt"
-CORRELATOR_PROMPT = "ai/prompts/correlator.de.txt"
+EXPLAINER_PROMPT = "ai/prompts/explainer.en.txt"
+CORRELATOR_PROMPT = "ai/prompts/correlator.en.txt"
+
+#: Shown in the report whenever the model is not used. The rule engine output is
+#: complete on its own; the sentence says so instead of leaving a gap.
+RULES_ONLY_NOTE = "The report is built completely from the rule engine."
 
 
 class AiFindingResult(BaseModel):
-    """Modellantwort zu einem Befund, samt Pruefergebnis."""
+    """Model answer for one finding, including the verification result."""
 
     model_config = ConfigDict(extra="forbid")
 
-    befund_id: str
+    finding_id: str
     ok: bool
     explanation: ExplainerOutput | None = None
     verification: VerificationReport = Field(default_factory=VerificationReport)
@@ -50,7 +53,7 @@ class AiFindingResult(BaseModel):
 
 
 class AiRunResult(BaseModel):
-    """Gesamtergebnis des KI-Layers eines Laufs."""
+    """Overall result of the AI layer of one run."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -64,9 +67,9 @@ class AiRunResult(BaseModel):
     started_utc: datetime | None = None
     finished_utc: datetime | None = None
 
-    def for_finding(self, befund_id: str) -> AiFindingResult | None:
+    def for_finding(self, finding_id: str) -> AiFindingResult | None:
         for entry in self.findings:
-            if entry.befund_id == befund_id:
+            if entry.finding_id == finding_id:
                 return entry
         return None
 
@@ -77,7 +80,7 @@ class AiRunResult(BaseModel):
 
 
 class AiLayer:
-    """Fuehrt Erklaerer und Korrelator aus - oder meldet sauber, warum nicht."""
+    """Runs explainer and correlator - or reports cleanly why not."""
 
     def __init__(
         self,
@@ -112,12 +115,12 @@ class AiLayer:
             return None
         return self._client
 
-    # --- Buendel -------------------------------------------------------------
+    # --- Bundles -------------------------------------------------------------
 
     def bundles_for(
         self, findings: list[Finding], context: SystemContext
     ) -> dict[str, list[FindingBundle]]:
-        """Baut je Befund die Buendel - bei Ueberlauf mehrere Teilbuendel."""
+        """Builds the bundles per finding - several partial bundles on overflow."""
         out: dict[str, list[FindingBundle]] = {}
         for finding in findings:
             if finding.suppressed:
@@ -137,48 +140,48 @@ class AiLayer:
             )
             if len(parts) > 1:
                 get_log().info(
-                    "Buendel geteilt statt gekuerzt",
-                    befund=finding.finding_id,
-                    teile=len(parts),
+                    "Bundle split instead of truncated",
+                    finding=finding.finding_id,
+                    parts=len(parts),
                 )
             out[finding.finding_id] = parts
         return out
 
-    # --- Ausfuehrung ---------------------------------------------------------
+    # --- Execution -----------------------------------------------------------
 
     def run(
         self,
         findings: list[Finding],
         context: SystemContext,
     ) -> tuple[AiRunResult, dict[str, list[FindingBundle]]]:
-        """Fuehrt den KI-Layer aus. Wirft nicht - Ausfaelle werden gemeldet."""
+        """Runs the AI layer. Does not raise - failures are reported."""
         log = get_log()
         result = AiRunResult(started_utc=datetime.now(UTC))
         bundles = self.bundles_for(findings, context)
 
         if not self.config.enabled:
-            result.unavailable_reason = "KI-Layer per Konfiguration abgeschaltet."
+            result.unavailable_reason = f"AI layer disabled by configuration. {RULES_ONLY_NOTE}"
             result.finished_utc = datetime.now(UTC)
             return result, bundles
 
         client = self.client()
         if client is None:
-            result.unavailable_reason = self._client_error or "Kein Client verfuegbar."
-            log.warn("KI-Layer nicht verwendet", grund=result.unavailable_reason)
+            result.unavailable_reason = (
+                f"{self._client_error or 'No client available.'} {RULES_ONLY_NOTE}"
+            )
+            log.warn("AI layer not used", reason=result.unavailable_reason)
             result.finished_utc = datetime.now(UTC)
             return result, bundles
 
         if not client.available():
-            # Der Client unterscheidet "Dienst laeuft nicht" von "Modell fehlt".
-            # Diese Unterscheidung gehoert in den Bericht, nicht in ein Logfile:
-            # Sie sagt, was zu tun ist.
+            # The client tells "service not running" from "model missing" and
+            # "model is a cloud model". That distinction belongs in the report,
+            # not in a log file: it says what to do.
             reason = getattr(client, "unavailable_reason", lambda: None)() or (
-                f"Ollama unter {self.config.base_url} nicht erreichbar."
+                f"Ollama not reachable at {self.config.base_url}."
             )
-            result.unavailable_reason = (
-                f"{reason} Der Bericht entsteht vollstaendig aus der Regel-Engine."
-            )
-            log.warn("KI-Layer nicht verwendet", grund=reason)
+            result.unavailable_reason = f"{reason} {RULES_ONLY_NOTE}"
+            log.warn("AI layer not used", reason=reason)
             result.finished_utc = datetime.now(UTC)
             return result, bundles
 
@@ -189,9 +192,9 @@ class AiLayer:
         system_prompt = read_resource_text(EXPLAINER_PROMPT)
         schema = json_schema_for(ExplainerOutput)
 
-        for befund_id, parts in bundles.items():
+        for finding_id, parts in bundles.items():
             result.findings.append(
-                self._explain(client, system_prompt, schema, befund_id, parts)
+                self._explain(client, system_prompt, schema, finding_id, parts)
             )
 
         result.correlation, result.correlation_verification = self._correlate(client, bundles)
@@ -203,7 +206,7 @@ class AiLayer:
         client: OllamaClient,
         system_prompt: str,
         schema: dict[str, object],
-        befund_id: str,
+        finding_id: str,
         parts: list[FindingBundle],
     ) -> AiFindingResult:
         log = get_log()
@@ -219,7 +222,7 @@ class AiLayer:
             )
             if parsed is None:
                 return AiFindingResult(
-                    befund_id=befund_id,
+                    finding_id=finding_id,
                     ok=False,
                     note=note,
                     prompt_tokens_estimated=estimated,
@@ -236,21 +239,21 @@ class AiLayer:
             deviation = abs(actual - estimated) / max(estimated, 1)
             if deviation > 0.4:
                 log.warn(
-                    "Token-Schaetzung weicht deutlich ab - chars_per_token nachziehen",
-                    befund=befund_id,
-                    geschaetzt=estimated,
-                    tatsaechlich=actual,
+                    "Token estimate deviates clearly - adjust chars_per_token",
+                    finding=finding_id,
+                    estimated=estimated,
+                    actual=actual,
                 )
 
         if report.statements_rejected:
             log.warn(
-                "Aussagen ohne Deckung verworfen",
-                befund=befund_id,
-                anzahl=report.statements_rejected,
+                "Statements without evidence rejected",
+                finding=finding_id,
+                count=report.statements_rejected,
             )
 
         return AiFindingResult(
-            befund_id=befund_id,
+            finding_id=finding_id,
             ok=True,
             explanation=verified,
             verification=report,
@@ -268,19 +271,19 @@ class AiLayer:
 
         summary = [
             {
-                "befund_id": part.befund_id,
-                "regel": part.regel,
+                "finding_id": part.finding_id,
+                "rule": part.rule,
                 "severity": part.severity,
                 "provider": part.provider,
                 "event_id": part.event_id,
-                "haeufigkeit": part.haeufigkeit,
-                "erstes_vorkommen_utc": part.erstes_vorkommen_utc,
-                "letztes_vorkommen_utc": part.letztes_vorkommen_utc,
-                "beispiel": part.beispielmeldungen[0] if part.beispielmeldungen else "",
+                "count": part.count,
+                "first_seen_utc": part.first_seen_utc,
+                "last_seen_utc": part.last_seen_utc,
+                "sample": part.sample_messages[0] if part.sample_messages else "",
             }
             for part in flat
         ]
-        user_prompt = json.dumps({"befunde": summary}, ensure_ascii=False, indent=1)
+        user_prompt = json.dumps({"findings": summary}, ensure_ascii=False, indent=1)
         parsed, _, note = self._call_with_retry(
             client,
             read_resource_text(CORRELATOR_PROMPT),
@@ -290,7 +293,7 @@ class AiLayer:
         )
         if parsed is None:
             report = VerificationReport()
-            report.rejected_reasons.append(note or "Korrelator lieferte keine gueltige Antwort.")
+            report.rejected_reasons.append(note or "The correlator returned no valid answer.")
             return None, report
         return verify_correlator(parsed, flat)
 
@@ -302,7 +305,7 @@ class AiLayer:
         schema: dict[str, object],
         model_type: type[ExplainerOutput] | type[CorrelatorOutput],
     ) -> tuple[ExplainerOutput | CorrelatorOutput | None, int | None, str | None]:
-        """Ein Aufruf, bei Schemaverstoss genau ein Retry, danach Rueckfall."""
+        """One call, exactly one retry on a schema violation, then fall back."""
         last_error: str | None = None
         for attempt in (1, 2):
             try:
@@ -312,30 +315,30 @@ class AiLayer:
                     json_schema=schema,  # type: ignore[arg-type]
                 )
             except OllamaUnavailableError as exc:
-                return None, None, f"Ollama waehrend des Laufs nicht erreichbar: {exc}"
+                return None, None, f"Ollama not reachable during the run: {exc}"
 
             try:
                 return model_type.model_validate_json(reply.content), reply.prompt_tokens, None
             except ValidationError as exc:
-                last_error = f"Schemaverstoss (Versuch {attempt}): {exc.error_count()} Fehler"
-                get_log().warn("Modellantwort verletzt das Schema", versuch=attempt)
+                last_error = f"schema violation (attempt {attempt}): {exc.error_count()} errors"
+                get_log().warn("Model answer violates the schema", attempt=attempt)
             except ValueError as exc:
-                last_error = f"Antwort war kein gueltiges JSON (Versuch {attempt}): {exc}"
+                last_error = f"answer was not valid JSON (attempt {attempt}): {exc}"
 
-        return None, None, (last_error or "Unbekannter Fehler") + " - Rueckfall auf Regelausgabe."
+        return None, None, (last_error or "unknown error") + " - falling back to the rule output."
 
 
 def _merge_explanations(
     first: ExplainerOutput | None, second: ExplainerOutput
 ) -> ExplainerOutput:
-    """Reduce-Schritt beim Map-Reduce ueber Teilbuendel."""
+    """Reduce step of the map-reduce over partial bundles."""
     if first is None:
         return second
-    summary = first.zusammenfassung
-    if second.zusammenfassung and second.zusammenfassung not in summary:
-        summary = f"{summary} {second.zusammenfassung}".strip()
+    summary = first.summary
+    if second.summary and second.summary not in summary:
+        summary = f"{summary} {second.summary}".strip()
     return ExplainerOutput(
-        zusammenfassung=summary,
-        hypothesen=first.hypothesen + second.hypothesen,
-        empfohlene_schritte=first.empfohlene_schritte + second.empfohlene_schritte,
+        summary=summary,
+        hypotheses=first.hypotheses + second.hypotheses,
+        recommended_steps=first.recommended_steps + second.recommended_steps,
     )

@@ -1,4 +1,4 @@
-"""Anlegen der Benutzerkonfiguration."""
+"""Creating the user configuration, and the entry point."""
 
 from __future__ import annotations
 
@@ -15,40 +15,40 @@ from wineventai.config.loader import (
 )
 
 
-def test_datei_wird_nicht_von_selbst_angelegt() -> None:
-    """Ein Werkzeug, das ungefragt in %PROGRAMDATA% schreibt, ueberrascht."""
+def test_the_file_is_not_created_on_its_own() -> None:
+    """A tool that writes into %PROGRAMDATA% unasked is a surprise."""
     load_config()
     assert not user_config_path().exists()
 
 
-def test_init_legt_datei_an() -> None:
+def test_init_creates_the_file() -> None:
     path = write_user_config()
     assert path.is_file()
     assert path == user_config_path()
     text = path.read_text(encoding="utf-8")
-    assert "wineventai config show" in text, "der Kopf muss den Weg zur Kontrolle nennen"
+    assert "wineventai config show" in text, "the header must point to the way to check"
 
 
-def test_angelegte_datei_ist_vollstaendig_auskommentiert() -> None:
-    """Damit sie keine Vorgaben einfriert.
+def test_the_created_file_is_completely_commented_out() -> None:
+    """So that it does not freeze any defaults.
 
-    Eine vollstaendige Kopie waere bequemer und schlechter: Sie friert die
-    Vorgaben des Installationstags ein, und eine spaetere Korrektur an den
-    mitgelieferten Werten greift dann nie.
+    A complete copy would be more convenient and worse: it freezes the defaults
+    of the installation day, and a later correction of the bundled values then
+    never takes effect.
     """
     path = write_user_config()
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
-    assert payload is None, "die frische Datei darf keinen einzigen aktiven Wert setzen"
+    assert payload is None, "the fresh file must not set a single active value"
 
 
-def test_angelegte_datei_aendert_die_wirksamen_werte_nicht() -> None:
-    vorher = load_config()
+def test_the_created_file_does_not_change_the_effective_values() -> None:
+    before = load_config()
     write_user_config()
-    nachher = load_config()
-    assert vorher == nachher
+    after = load_config()
+    assert before == after
 
 
-def test_einkommentierter_wert_wird_wirksam() -> None:
+def test_an_uncommented_value_takes_effect() -> None:
     path = write_user_config()
     text = (
         path.read_text(encoding="utf-8")
@@ -59,24 +59,24 @@ def test_einkommentierter_wert_wird_wirksam() -> None:
 
     assert load_config().collect.days == 21
     assert load_config().collect.max_retained_per_channel == 200_000, (
-        "der Rest bleibt an den mitgelieferten Vorgaben haengen"
+        "the rest stays tied to the bundled defaults"
     )
 
 
-def test_full_schreibt_aktive_werte() -> None:
+def test_full_writes_active_values() -> None:
     path = write_user_config(full=True)
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert payload is not None
     assert payload["collect"]["days"] == 7
 
 
-def test_zweiter_aufruf_ohne_force_wird_abgelehnt() -> None:
+def test_a_second_call_without_force_is_refused() -> None:
     write_user_config()
     with pytest.raises(FileExistsError):
         write_user_config()
 
 
-def test_force_sichert_die_bisherige_fassung() -> None:
+def test_force_backs_up_the_previous_version() -> None:
     path = write_user_config()
     path.write_text("collect:\n  days: 3\n", encoding="utf-8")
 
@@ -86,35 +86,34 @@ def test_force_sichert_die_bisherige_fassung() -> None:
     assert "days: 3" in backup.read_text(encoding="utf-8")
 
 
-def test_kommentare_und_leerzeilen_bleiben_erhalten() -> None:
-    """Die Erklaerungen in der Vorgabedatei sind der halbe Wert der Datei."""
+def test_comments_and_blank_lines_are_kept() -> None:
+    """The explanations in the defaults file are half its value."""
     original = default_config_text()
     result = commented_out(original)
 
-    assert "# Mitgelieferte Vorgabewerte" in result
-    assert result.count("\n\n") > 3, "die Gliederung durch Leerzeilen bleibt"
+    assert "# Bundled defaults" in result
+    assert result.count("\n\n") > 3, "the structure by blank lines stays"
     for line in result.splitlines():
         if line.strip():
-            assert line.lstrip().startswith("#"), f"nicht auskommentiert: {line!r}"
+            assert line.lstrip().startswith("#"), f"not commented out: {line!r}"
 
 
-def test_quellenliste_meldet_fehlende_datei() -> None:
-    quellen = dict((name, exists) for name, _, exists in effective_config_sources())
-    assert quellen["mitgeliefert"] is True
-    assert quellen["benutzer"] is False
+def test_the_source_list_reports_a_missing_file() -> None:
+    sources = dict((name, exists) for name, _, exists in effective_config_sources())
+    assert sources["bundled"] is True
+    assert sources["user"] is False
 
     write_user_config()
-    quellen = dict((name, exists) for name, _, exists in effective_config_sources())
-    assert quellen["benutzer"] is True
+    sources = dict((name, exists) for name, _, exists in effective_config_sources())
+    assert sources["user"] is True
 
 
-def test_vergessener_elternschluessel_bricht_sichtbar_ab() -> None:
-    """Die haeufigste Bedienfalle beim Einkommentieren.
+def test_a_forgotten_parent_key_fails_visibly() -> None:
+    """The most common usage trap when uncommenting.
 
-    Wer nur die Wertzeile einkommentiert und den Elternschluessel vergisst,
-    setzt den Wert auf oberster Ebene. Das MUSS mit einer klaren Meldung
-    abbrechen und darf nicht still wirkungslos bleiben - deshalb steht
-    'extra=forbid' im Konfigurationsmodell.
+    Whoever uncomments only the value line and forgets the parent key sets the
+    value at the top level. That MUST fail with a clear message and must not
+    silently do nothing - which is why 'extra=forbid' is in the config model.
     """
     from pydantic import ValidationError
 
@@ -127,8 +126,8 @@ def test_vergessener_elternschluessel_bricht_sichtbar_ab() -> None:
     assert "days" in str(excinfo.value)
 
 
-def test_einstiegspunkt_kommt_ohne_relative_importe_aus() -> None:
-    """PyInstaller startet __main__.py als Skript ohne Paket - relative Importe scheitern dort."""
+def test_the_entry_point_uses_no_relative_imports() -> None:
+    """PyInstaller starts __main__.py as a script - relative imports fail there."""
     import ast
     from pathlib import Path
 
@@ -142,9 +141,9 @@ def test_einstiegspunkt_kommt_ohne_relative_importe_aus() -> None:
     assert relative == []
 
 
-def test_nur_die_gui_exe_startet_die_oberflaeche() -> None:
+def test_only_the_gui_exe_starts_the_user_interface() -> None:
     from wineventai.__main__ import wants_gui
 
-    assert wants_gui(r"C:\Programme\wineventai\wineventai-gui.exe", frozen=True)
-    assert not wants_gui(r"C:\Programme\wineventai\wineventai.exe", frozen=True)
+    assert wants_gui(r"C:\Program Files\wineventai\wineventai-gui.exe", frozen=True)
+    assert not wants_gui(r"C:\Program Files\wineventai\wineventai.exe", frozen=True)
     assert not wants_gui(r"C:\Python\python.exe", frozen=False)

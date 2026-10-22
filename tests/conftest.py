@@ -1,13 +1,13 @@
-"""Gemeinsame Test-Vorrichtungen.
+"""Shared test fixtures.
 
-Zwei Dinge werden hier prozessweit sichergestellt:
+Two things are ensured process-wide here:
 
-1. **Kein Netzzugriff.** Eine ``autouse``-Fixture patcht ``socket.socket`` so,
-   dass jeder Verbindungsversuch den Test scheitern laesst. Ohne das faellt ein
-   versehentlicher Aufruf gegen ein lokal laufendes Ollama nicht auf - er
-   funktioniert dann auf dem Entwicklungsrechner und schlaegt in CI fehl.
-2. **Kein Zugriff auf %PROGRAMDATA%.** Konfiguration, Regel-Overlay und
-   Wissensbasis landen in einem temporaeren Verzeichnis je Testlauf.
+1. **No network access.** An ``autouse`` fixture patches ``socket.socket`` so
+   that every connection attempt fails the test. Without it an accidental call
+   against a locally running Ollama goes unnoticed - it works on the
+   development machine and fails in CI.
+2. **No access to %PROGRAMDATA%.** Configuration, rule overlay and knowledge
+   base go into a temporary directory per test run.
 """
 
 from __future__ import annotations
@@ -24,14 +24,14 @@ from wineventai.collect.rundir import RunDirectory
 
 
 class NetworkAccessInTest(RuntimeError):
-    """Ein Test hat versucht, das Netz zu benutzen."""
+    """A test tried to use the network."""
 
 
 @pytest.fixture(autouse=True)
 def _no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     def _blocked(*args: object, **kwargs: object) -> None:
         raise NetworkAccessInTest(
-            "Tests duerfen nicht ins Netz. Der KI-Layer wird gemockt."
+            "Tests must not use the network. The AI layer is mocked."
         )
 
     monkeypatch.setattr(socket, "socket", _blocked)
@@ -49,7 +49,7 @@ def _isolated_data_dir(
 
 @pytest.fixture
 def fixture_run(tmp_path: Path) -> RunDirectory:
-    """Ein Laufverzeichnis, gefuellt aus den echten NDJSON-Fixtures."""
+    """A run directory, filled from the real NDJSON fixtures."""
     run = RunDirectory.create(
         root=tmp_path / "runs",
         requested_from=WINDOW_START,
@@ -75,7 +75,7 @@ def fixture_run(tmp_path: Path) -> RunDirectory:
                 covered_to_utc=WINDOW_END,
                 records_read=1000,
                 records_retained=1000,
-                note=None if status is SourceStatus.COLLECTED else "Zeitlimit erreicht.",
+                note=None if status is SourceStatus.COLLECTED else "Time limit reached.",
             )
         )
     results.append(

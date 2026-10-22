@@ -1,20 +1,20 @@
-"""Netzsonde: Erreichbarkeit von DNS-Server, Gateway und DHCP-Server.
+"""Network probe: reachability of DNS server, gateway and DHCP server.
 
-Diese Sonde beantwortet die Frage, die ein Buendel DNS-Client 1014 aufwirft:
-Steht der Pfad zur Namensaufloesung ueberhaupt? Sie beantwortet sie fuer JETZT -
-der Zeitvorbehalt aus ``base.py`` gilt hier besonders, weil eine Netzstoerung
-das fluechtigste aller Symptome ist.
+This probe answers the question a DNS Client 1014 bundle raises: is the path
+to name resolution standing at all? It answers it for NOW - the time caveat
+from ``base.py`` applies especially here, because a network disturbance is the
+most fleeting of all symptoms.
 
-Zwei Messungen, und die Reihenfolge ist wichtig:
+Two measurements, and the order matters:
 
-1. ICMP an die eingetragenen Server. Billig, aber schwach: Ein Rechner, der auf
-   Ping antwortet, kann einen toten DNS-Dienst haben.
-2. Eine echte Namensabfrage an denselben Server. Gefragt wird nach dem eigenen
-   Rechnernamen - kein fremder Name verlaesst dabei das Haus, und die Frage
-   trifft trotzdem den Dienst und nicht nur den Host.
+1. ICMP to the configured servers. Cheap but weak: a machine that answers ping
+   can have a dead DNS service.
+2. A real name query to the same server. It asks for the own machine name - no
+   foreign name leaves the house, and the question still hits the service and
+   not just the host.
 
-Faellt Schritt 2 aus, weil ``Resolve-DnsName`` fehlt, bleibt die Aussage
-ausdruecklich schwach. Sie wird dann nicht aufgewertet.
+If step 2 is missing because ``Resolve-DnsName`` is unavailable, the statement
+explicitly stays weak. It is not upgraded then.
 """
 
 from __future__ import annotations
@@ -35,11 +35,11 @@ from .shell import ProbePayloads, run_probe_script
 if TYPE_CHECKING:  # pragma: no cover
     from ..rules.engine import Finding
 
-PROBE_ID = "netz"
-TITLE = "Netzpfad und Namensaufloesung"
+PROBE_ID = "network"
+TITLE = "Network path and name resolution"
 
-#: Welcher Befund welche Rolle messen laesst. Schluessel ist Provider (klein)
-#: plus Event-ID - nie die ID allein, die ist nur je Provider eindeutig.
+#: Which finding lets which role be measured. The key is provider (lower case)
+#: plus event id - never the id alone, which is only unique per provider.
 ROLE_FOR: dict[tuple[str, int], str] = {
     ("microsoft-windows-dns-client", 1014): "dns",
     ("dnsapi", 1014): "dns",
@@ -55,12 +55,12 @@ ROLE_FOR: dict[tuple[str, int], str] = {
 }
 
 ROLE_TITLE: dict[str, str] = {
-    "dns": "DNS-Server erreichbar",
-    "gateway": "Standardgateway erreichbar",
-    "dhcp": "DHCP-Server erreichbar",
+    "dns": "DNS server reachable",
+    "gateway": "Default gateway reachable",
+    "dhcp": "DHCP server reachable",
 }
 
-ROLE_LABEL: dict[str, str] = {"dns": "DNS-Server", "gateway": "Gateway", "dhcp": "DHCP-Server"}
+ROLE_LABEL: dict[str, str] = {"dns": "DNS servers", "gateway": "gateways", "dhcp": "DHCP servers"}
 
 
 def _as_int(value: object, default: int = 0) -> int:
@@ -71,7 +71,7 @@ def _as_int(value: object, default: int = 0) -> int:
 
 
 class NetworkProbe:
-    """Misst die lokale Netzinfrastruktur - und nur diese."""
+    """Measures the local network infrastructure - and only that."""
 
     probe_id = PROBE_ID
     title = TITLE
@@ -112,15 +112,15 @@ class NetworkProbe:
             return [timed_out_result(PROBE_ID, TITLE, run.duration_seconds)]
         if run.payloads.exception or (run.returncode != 0 and not run.payloads.items):
             get_log().warn(
-                "Netzsonde fehlgeschlagen",
-                ausnahme=run.payloads.exception,
+                "Network probe failed",
+                exception=run.payloads.exception,
                 code=run.returncode,
             )
             return [
                 failed_result(
                     PROBE_ID,
                     TITLE,
-                    "Die Netzkonfiguration liess sich nicht lesen.",
+                    "The network configuration could not be read.",
                     error=run.payloads.exception or run.stderr.strip()[:200] or None,
                 )
             ]
@@ -131,45 +131,48 @@ class NetworkProbe:
 def interpret(
     payloads: ProbePayloads, roles: list[str], *, duration_seconds: float = 0.0
 ) -> list[ProbeResult]:
-    """Baut je Rolle ein Ergebnis. Rein - kein Prozess, kein Netz, testbar."""
+    """Builds one result per role. Pure - no process, no network, testable."""
     results: list[ProbeResult] = []
-    ziele = payloads.of_kind("ziel")
-    leer = {str(item.get("rolle")): str(item.get("grund", "")) for item in payloads.of_kind("leer")}
-    abfragen = payloads.of_kind("dnsabfrage")
-    hinweise = [str(item.get("text", "")) for item in payloads.of_kind("hinweis")]
+    targets = payloads.of_kind("target")
+    empty = {
+        str(item.get("role")): str(item.get("reason", ""))
+        for item in payloads.of_kind("empty")
+    }
+    queries = payloads.of_kind("dnsquery")
+    notes = [str(item.get("text", "")) for item in payloads.of_kind("note")]
 
     for role in roles:
-        eigene = [item for item in ziele if item.get("rolle") == role]
-        titel = ROLE_TITLE.get(role, TITLE)
+        own = [item for item in targets if item.get("role") == role]
+        title = ROLE_TITLE.get(role, TITLE)
 
-        if not eigene:
-            grund = leer.get(role) or "Fuer diese Rolle ist auf dem System nichts eingetragen."
+        if not own:
+            reason = empty.get(role) or "Nothing is configured for this role on the system."
             results.append(
                 ProbeResult(
                     probe_id=PROBE_ID,
-                    title=titel,
+                    title=title,
                     status=ProbeStatus.NOT_APPLICABLE,
                     target=role,
-                    summary=grund,
+                    summary=reason,
                     duration_seconds=duration_seconds,
                 )
             )
             continue
 
-        gemessen = [item for item in eigene if not item.get("uebersprungen")]
-        uebersprungen = [item for item in eigene if item.get("uebersprungen")]
-        details = [_target_line(item) for item in eigene]
+        measured = [item for item in own if not item.get("skipped")]
+        skipped = [item for item in own if item.get("skipped")]
+        details = [_target_line(item) for item in own]
 
-        if not gemessen:
+        if not measured:
             results.append(
                 ProbeResult(
                     probe_id=PROBE_ID,
-                    title=titel,
+                    title=title,
                     status=ProbeStatus.NOT_APPLICABLE,
                     target=role,
                     summary=(
-                        f"Alle eingetragenen {ROLE_LABEL.get(role, role)} liegen ausserhalb der "
-                        "privaten Adressbereiche. Diese Sonde misst nur im lokalen Netz."
+                        f"All configured {ROLE_LABEL.get(role, role)} are outside the private "
+                        "address ranges. This probe only measures within the local network."
                     ),
                     details=details,
                     duration_seconds=duration_seconds,
@@ -177,194 +180,190 @@ def interpret(
             )
             continue
 
-        tot = [item for item in gemessen if _as_int(item.get("empfangen")) == 0]
-        teilweise = [
+        dead = [item for item in measured if _as_int(item.get("received")) == 0]
+        partial = [
             item
-            for item in gemessen
-            if 0 < _as_int(item.get("empfangen")) < _as_int(item.get("gesendet"), 1)
+            for item in measured
+            if 0 < _as_int(item.get("received")) < _as_int(item.get("sent"), 1)
         ]
 
         if role == "dns":
             results.append(
-                _dns_result(gemessen, tot, teilweise, abfragen, details, hinweise, duration_seconds)
+                _dns_result(measured, dead, partial, queries, details, notes, duration_seconds)
             )
         else:
             results.append(
-                _ping_result(role, titel, gemessen, tot, teilweise, details, duration_seconds)
+                _ping_result(role, title, measured, dead, partial, details, duration_seconds)
             )
 
-        if uebersprungen:
-            # Kein eigener Befundeintrag - aber es muss sichtbar bleiben, dass
-            # ein Teil der Konfiguration ungemessen blieb.
+        if skipped:
+            # No finding entry of its own - but it has to stay visible that part
+            # of the configuration remained unmeasured.
             results[-1].details.append(
-                f"{len(uebersprungen)} Adresse(n) uebersprungen, weil sie ausserhalb des "
-                "lokalen Netzes liegen."
+                f"{len(skipped)} address(es) skipped because they are outside the "
+                "local network."
             )
 
     return results
 
 
 def _target_line(item: dict[str, object]) -> str:
-    adresse = str(item.get("adresse", "?"))
+    address = str(item.get("address", "?"))
     adapter = str(item.get("adapter") or "").strip()
-    zusatz = f" ({adapter})" if adapter else ""
+    suffix = f" ({adapter})" if adapter else ""
 
-    if item.get("uebersprungen"):
-        return f"{adresse}{zusatz}: nicht gemessen - oeffentliche Adresse"
+    if item.get("skipped"):
+        return f"{address}{suffix}: not measured - public address"
 
-    gesendet = _as_int(item.get("gesendet"))
-    empfangen = _as_int(item.get("empfangen"))
-    if empfangen == 0:
-        fehler = str(item.get("fehler") or "keine Antwort")
-        return f"{adresse}{zusatz}: {gesendet} Versuche, keine Antwort ({fehler})"
+    sent = _as_int(item.get("sent"))
+    received = _as_int(item.get("received"))
+    if received == 0:
+        error = str(item.get("error") or "no answer")
+        return f"{address}{suffix}: {sent} attempts, no answer ({error})"
 
-    schnitt = item.get("schnitt_ms")
-    zeit = f", im Schnitt {schnitt} ms" if schnitt is not None else ""
-    return f"{adresse}{zusatz}: {empfangen} von {gesendet} beantwortet{zeit}"
+    average = item.get("avg_ms")
+    timing = f", {average} ms on average" if average is not None else ""
+    return f"{address}{suffix}: {received} of {sent} answered{timing}"
 
 
 def _ping_result(
     role: str,
-    titel: str,
-    gemessen: list[dict[str, object]],
-    tot: list[dict[str, object]],
-    teilweise: list[dict[str, object]],
+    title: str,
+    measured: list[dict[str, object]],
+    dead: list[dict[str, object]],
+    partial: list[dict[str, object]],
     details: list[str],
     duration_seconds: float,
 ) -> ProbeResult:
     label = ROLE_LABEL.get(role, role)
-    if tot:
+    if dead:
         return ProbeResult(
             probe_id=PROBE_ID,
-            title=titel,
+            title=title,
             status=ProbeStatus.WARN,
             bearing=ProbeBearing.SUPPORTS,
             target=role,
-            summary=(
-                f"{len(tot)} von {len(gemessen)} eingetragenen {label} antworten nicht."
-            ),
+            summary=f"{len(dead)} of {len(measured)} configured {label} do not answer.",
             details=details,
             duration_seconds=duration_seconds,
         )
-    if teilweise:
+    if partial:
         return ProbeResult(
             probe_id=PROBE_ID,
-            title=titel,
+            title=title,
             status=ProbeStatus.WARN,
             bearing=ProbeBearing.SUPPORTS,
             target=role,
-            summary=f"Paketverluste auf dem Weg zu {label}.",
+            summary=f"Packet loss on the way to the {label}.",
             details=details,
             duration_seconds=duration_seconds,
         )
     return ProbeResult(
         probe_id=PROBE_ID,
-        title=titel,
+        title=title,
         status=ProbeStatus.OK,
         bearing=ProbeBearing.WEAKENS,
         target=role,
-        summary=f"Alle eingetragenen {label} antworten ohne Verlust.",
+        summary=f"All configured {label} answer without loss.",
         details=details,
         duration_seconds=duration_seconds,
     )
 
 
 def _dns_result(
-    gemessen: list[dict[str, object]],
-    tot: list[dict[str, object]],
-    teilweise: list[dict[str, object]],
-    abfragen: list[dict[str, object]],
+    measured: list[dict[str, object]],
+    dead: list[dict[str, object]],
+    partial: list[dict[str, object]],
+    queries: list[dict[str, object]],
     details: list[str],
-    hinweise: list[str],
+    notes: list[str],
     duration_seconds: float,
 ) -> ProbeResult:
-    titel = ROLE_TITLE["dns"]
-    alle_details = list(details)
-    for eintrag in abfragen:
-        alle_details.append(_query_line(eintrag))
-    alle_details.extend(hinweise)
+    title = ROLE_TITLE["dns"]
+    all_details = list(details)
+    for entry in queries:
+        all_details.append(_query_line(entry))
+    all_details.extend(notes)
 
-    fehlgeschlagen = [item for item in abfragen if not item.get("erfolg")]
+    failed = [item for item in queries if not item.get("success")]
 
-    if tot:
+    if dead:
         return ProbeResult(
             probe_id=PROBE_ID,
-            title=titel,
+            title=title,
             status=ProbeStatus.WARN,
             bearing=ProbeBearing.SUPPORTS,
             target="dns",
-            summary=f"{len(tot)} von {len(gemessen)} DNS-Servern antworten nicht.",
-            details=alle_details,
+            summary=f"{len(dead)} of {len(measured)} DNS servers do not answer.",
+            details=all_details,
             duration_seconds=duration_seconds,
         )
 
-    if fehlgeschlagen:
+    if failed:
         return ProbeResult(
             probe_id=PROBE_ID,
-            title=titel,
+            title=title,
             status=ProbeStatus.WARN,
             bearing=ProbeBearing.SUPPORTS,
             target="dns",
             summary=(
-                f"{len(fehlgeschlagen)} von {len(abfragen)} DNS-Servern beantworten zwar ICMP, "
-                "aber keine Namensabfrage. Genau dieses Bild erzeugt Ereignis 1014."
+                f"{len(failed)} of {len(queries)} DNS servers answer ICMP but no name "
+                "query. Exactly this picture produces event 1014."
             ),
-            details=alle_details,
+            details=all_details,
             duration_seconds=duration_seconds,
         )
 
-    if not abfragen:
-        # Nur ICMP gemessen. Das reicht ausdruecklich nicht fuer eine Entwarnung:
-        # Ein Host, der auf Ping antwortet, kann einen toten DNS-Dienst haben.
+    if not queries:
+        # Only ICMP measured. That is explicitly not enough for an all-clear: a
+        # host that answers ping can have a dead DNS service.
         return ProbeResult(
             probe_id=PROBE_ID,
-            title=titel,
+            title=title,
             status=ProbeStatus.OK,
             bearing=ProbeBearing.INCONCLUSIVE,
             target="dns",
             summary=(
-                "Die DNS-Server antworten auf ICMP. Eine Namensabfrage wurde nicht "
-                "durchgefuehrt, daher ist ueber den DNS-Dienst selbst nichts gesagt."
+                "The DNS servers answer ICMP. No name query was performed, so nothing "
+                "is said about the DNS service itself."
             ),
-            details=alle_details,
+            details=all_details,
             duration_seconds=duration_seconds,
         )
 
-    if teilweise:
+    if partial:
         return ProbeResult(
             probe_id=PROBE_ID,
-            title=titel,
+            title=title,
             status=ProbeStatus.WARN,
             bearing=ProbeBearing.SUPPORTS,
             target="dns",
-            summary=(
-                "Namensabfragen gelingen, aber der Weg zum DNS-Server verliert Pakete."
-            ),
-            details=alle_details,
+            summary="Name queries succeed, but the path to the DNS server loses packets.",
+            details=all_details,
             duration_seconds=duration_seconds,
         )
 
     return ProbeResult(
         probe_id=PROBE_ID,
-        title=titel,
+        title=title,
         status=ProbeStatus.OK,
         bearing=ProbeBearing.WEAKENS,
         target="dns",
-        summary="Alle DNS-Server antworten und loesen den eigenen Rechnernamen auf.",
-        details=alle_details,
+        summary="All DNS servers answer and resolve the own machine name.",
+        details=all_details,
         duration_seconds=duration_seconds,
     )
 
 
 def _query_line(item: dict[str, object]) -> str:
     server = str(item.get("server", "?"))
-    if item.get("erfolg"):
-        dauer = item.get("dauer_ms")
-        antwort = item.get("antwort")
-        teile = [f"Namensabfrage an {server}: beantwortet"]
-        if antwort:
-            teile.append(f"({antwort})")
-        if dauer is not None:
-            teile.append(f"in {dauer} ms")
-        return " ".join(teile)
-    return f"Namensabfrage an {server}: fehlgeschlagen ({item.get('fehler') or 'ohne Angabe'})"
+    if item.get("success"):
+        duration = item.get("duration_ms")
+        answer = item.get("answer")
+        parts = [f"Name query to {server}: answered"]
+        if answer:
+            parts.append(f"({answer})")
+        if duration is not None:
+            parts.append(f"in {duration} ms")
+        return " ".join(parts)
+    return f"Name query to {server}: failed ({item.get('error') or 'no detail'})"

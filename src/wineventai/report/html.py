@@ -1,9 +1,9 @@
-"""HTML-Bericht: eine einzige Datei ohne externe Ressourcen.
+"""HTML report: one single file without external resources.
 
-Kein CDN, keine JavaScript-Bibliothek, keine nachgeladenen Schriften. Das folgt
-aus "vollstaendig offline" - und aus derselben Ueberlegung wie beim Verzicht auf
-kodierte PowerShell: Eine HTML-Datei, die beim Oeffnen ins Netz greift, ist auf
-einem untersuchten Rechner das falsche Signal.
+No CDN, no JavaScript library, no web fonts loaded afterwards. That follows
+from "fully offline" - and from the same consideration as avoiding encoded
+PowerShell: an HTML file that reaches into the network when opened is the
+wrong signal on a machine under examination.
 """
 
 from __future__ import annotations
@@ -18,18 +18,19 @@ from ..resources import read_resource_text, resource_path
 from .model import ReportModel
 from .timeline_svg import render_timeline
 
-TEMPLATE_NAME = "bericht.html.j2"
+TEMPLATE_NAME = "report.html.j2"
+STYLESHEET = "report/assets/report.css"
 
 
 def _format_datetime(value: datetime | None) -> str:
     if value is None:
         return "—"
-    return value.strftime("%d.%m.%Y %H:%M:%S")
+    return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _format_number(value: object) -> str:
     try:
-        return f"{int(value):,}".replace(",", ".")
+        return f"{int(value):,}"
     except (TypeError, ValueError):
         return str(value)
 
@@ -43,20 +44,14 @@ def _environment() -> Environment:
         lstrip_blocks=True,
     )
     env.filters["dt"] = _format_datetime
-    env.filters["zahl"] = _format_number
-    env.filters["stunde"] = hour_label
+    env.filters["number"] = _format_number
+    env.filters["hour"] = hour_label
     return env
 
 
 def render_html(report: ReportModel) -> str:
-    """Rendert den vollstaendigen Bericht als HTML-Zeichenkette."""
-    covered = [
-        row for row in report.coverage if row.status.value not in {"abgeschaltet", "kanal fehlt"}
-    ]
+    """Renders the complete report as an HTML string."""
     covered_from = None
-    for source in covered:
-        _ = source  # Abdeckung steckt bereits in den Zeilen; hier nur Zeitleiste.
-
     earliest = [
         finding.group.first_seen_utc for finding in report.findings if finding.group.samples
     ]
@@ -73,7 +68,7 @@ def render_html(report: ReportModel) -> str:
     template = _environment().get_template(TEMPLATE_NAME)
     return template.render(
         report=report,
-        css=read_resource_text("report/assets/bericht.css"),
+        css=read_resource_text(STYLESHEET),
         timeline=timeline,
     )
 

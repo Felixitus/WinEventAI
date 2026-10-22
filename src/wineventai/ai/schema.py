@@ -1,9 +1,9 @@
-"""Ein- und Ausgabeschema des KI-Layers.
+"""Input and output schema of the AI layer.
 
-Die Belege sind ein STRUKTURIERTES Feld, nicht Prosa. Nur so ist die Vorgabe
-"jede Modellaussage verweist auf konkrete Event-IDs und Zeitstempel" maschinell
-pruefbar. Wer die Belege aus dem Fliesstext kratzen muss, prueft am Ende seinen
-eigenen regulaeren Ausdruck und nicht das Modell.
+The evidence is a STRUCTURED field, not prose. Only that makes the requirement
+"every model statement points to concrete event ids and timestamps"
+machine-checkable. Whoever has to scrape the evidence out of running text ends
+up testing their own regular expression, not the model.
 """
 
 from __future__ import annotations
@@ -13,11 +13,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-Confidence = Literal["hoch", "mittel", "niedrig", "unklar"]
+Confidence = Literal["high", "medium", "low", "unclear"]
 
 
 class Evidence(BaseModel):
-    """Ein Beleg: genau ein Ereignis aus dem Eingabebuendel."""
+    """One piece of evidence: exactly one event from the input bundle."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -27,37 +27,37 @@ class Evidence(BaseModel):
 
 
 class Statement(BaseModel):
-    """Eine einzelne Aussage des Modells mit Belegen und Sicherheitsangabe."""
+    """A single statement of the model with evidence and a confidence rating."""
 
     model_config = ConfigDict(extra="forbid")
 
-    aussage: str
+    statement: str
     evidence: list[Evidence] = Field(min_length=1)
     confidence: Confidence
 
-    # Wird von der Nachpruefung gesetzt, nicht vom Modell.
+    # Set by the verification, not by the model.
     verified: bool = True
     verification_note: str | None = None
 
 
 class ExplainerOutput(BaseModel):
-    """Antwort der Rolle "Erklaerer"."""
+    """Answer of the "explainer" role."""
 
     model_config = ConfigDict(extra="forbid")
 
-    zusammenfassung: str
-    hypothesen: list[Statement] = Field(default_factory=list)
-    empfohlene_schritte: list[Statement] = Field(default_factory=list)
+    summary: str
+    hypotheses: list[Statement] = Field(default_factory=list)
+    recommended_steps: list[Statement] = Field(default_factory=list)
 
 
 class CorrelationGroup(BaseModel):
-    """Befunde, die das Modell demselben Vorfall zuordnet."""
+    """Findings the model attributes to the same incident."""
 
     model_config = ConfigDict(extra="forbid")
 
-    titel: str
-    befund_ids: list[str] = Field(min_length=1)
-    begruendung: str
+    title: str
+    finding_ids: list[str] = Field(min_length=1)
+    rationale: str
     evidence: list[Evidence] = Field(default_factory=list)
     confidence: Confidence
 
@@ -66,24 +66,23 @@ class CorrelationGroup(BaseModel):
 
 
 class CorrelatorOutput(BaseModel):
-    """Antwort der Rolle "Korrelator"."""
+    """Answer of the "correlator" role."""
 
     model_config = ConfigDict(extra="forbid")
 
-    vorfaelle: list[CorrelationGroup] = Field(default_factory=list)
+    incidents: list[CorrelationGroup] = Field(default_factory=list)
 
 
 def json_schema_for(model: type[BaseModel]) -> dict[str, Any]:
-    """JSON-Schema fuer das ``format``-Feld der Ollama-Anfrage.
+    """JSON schema for the ``format`` field of the Ollama request.
 
-    Mit einem Schema statt ``format: "json"`` ist die Dekodierung
-    grammatikgebunden: Schemaverstoesse werden zur Randerscheinung. Was bleibt,
-    ist gueltiges JSON mit falschem Inhalt - und genau dagegen arbeitet
-    ``verify.py``.
+    With a schema instead of ``format: "json"`` decoding is grammar-bound:
+    schema violations become a marginal phenomenon. What remains is valid JSON
+    with wrong content - and that is exactly what ``verify.py`` works against.
     """
     schema = model.model_json_schema()
-    # Die von der Nachpruefung gesetzten Felder gehoeren nicht in den Vertrag
-    # mit dem Modell.
+    # The fields set by the verification are not part of the contract with the
+    # model.
     for name in ("verified", "verification_note"):
         _strip_property(schema, name)
     return schema

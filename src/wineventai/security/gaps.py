@@ -1,9 +1,9 @@
-"""Luecken in der Zeitachse der Protokolle.
+"""Gaps in the timeline of the logs.
 
-Wichtige Einschraenkung, ohne die diese Pruefung nur Fehlalarme produziert:
-Eine Luecke zwischen einem 6006 und dem naechsten 6005 ist ein ausgeschalteter
-Rechner, kein geloeschtes Protokoll. Deshalb arbeitet diese Pruefung auf den
-Boot-Sessions und meldet nur Luecken INNERHALB einer laufenden Sitzung.
+An important restriction without which this check only produces false alarms:
+a gap between a 6006 and the next 6005 is a switched-off machine, not a deleted
+log. This check therefore works on the boot sessions and only reports gaps
+WITHIN a running session.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from ..normalize.schema import EventRecord
 
 
 class TimelineGap(BaseModel):
-    """Ein auffaellig ereignisloser Zeitraum innerhalb einer Sitzung."""
+    """A conspicuously event-free period within a session."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -30,9 +30,9 @@ class TimelineGap(BaseModel):
     @property
     def description(self) -> str:
         return (
-            f"{self.channel}: {self.hours:.1f} Stunden ohne jeden Eintrag "
-            f"({self.from_utc:%d.%m. %H:%M} bis {self.to_utc:%d.%m. %H:%M} UTC), "
-            f"innerhalb einer laufenden Sitzung."
+            f"{self.channel}: {self.hours:.1f} hours without any entry "
+            f"({self.from_utc:%Y-%m-%d %H:%M} to {self.to_utc:%Y-%m-%d %H:%M} UTC), "
+            f"within a running session."
         )
 
 
@@ -43,10 +43,10 @@ def find_gaps(
     min_hours: float = 6.0,
     channels: tuple[str, ...] = ("Security", "System"),
 ) -> list[TimelineGap]:
-    """Findet Luecken innerhalb laufender Sitzungen.
+    """Finds gaps within running sessions.
 
-    ``records`` darf in beliebiger Reihenfolge kommen; hier wird aufsteigend
-    sortiert, weil eine Luecke ein Vorwaertsbegriff ist.
+    ``records`` may arrive in any order; they are sorted ascending here,
+    because a gap is a forward concept.
     """
     by_index = {session.index: session for session in sessions}
     gaps: list[TimelineGap] = []
@@ -59,7 +59,7 @@ def find_gaps(
         )
         for previous, current in zip(relevant, relevant[1:], strict=False):
             if previous.boot_session != current.boot_session:
-                # Sitzungswechsel - der Rechner war aus. Keine Luecke.
+                # Session change - the machine was off. Not a gap.
                 continue
             session = by_index.get(previous.boot_session or 0)
             if session is not None and session.clean_shutdown is not None and (

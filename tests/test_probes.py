@@ -1,9 +1,9 @@
-"""Tests der Kontext-Sonden.
+"""Tests of the context probes.
 
-Die Testgrenze liegt bei ``read_payloads``: Alles ab dort ist reine Auswertung
-und laeuft ohne Windows und ohne PowerShell. Was hier NICHT geprueft werden
-kann, sind die drei ``.ps1``-Dateien selbst - die beweisen sich nur auf einem
-Zielsystem, und das steht so in der Standdokumentation.
+The test boundary is ``read_payloads``: everything from there on is pure
+evaluation and runs without Windows and without PowerShell. What can NOT be
+checked here are the three ``.ps1`` files themselves - they only prove
+themselves on a target system, and the status documentation says so.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ def make_finding(
     *,
     provider: str,
     event_id: int,
-    rule_id: str = "regel-1",
+    rule_id: str = "rule-1",
     minutes_ago: int = 5,
     properties: list[str | None] | None = None,
 ) -> Finding:
@@ -54,33 +54,33 @@ def make_finding(
     )
     return Finding(
         rule_id=rule_id,
-        rule_name="Testregel",
+        rule_name="Test rule",
         rule_source="builtin",
-        severity=Severity.FEHLER,
+        severity=Severity.ERROR,
         group=group,
     )
 
 
-# --- Grundbegriffe -----------------------------------------------------------
+# --- Basic vocabulary --------------------------------------------------------
 
 
-def test_zeitvorbehalt_wird_mit_dem_abstand_deutlicher():
-    jetzt = datetime(2026, 9, 10, 12, 0, tzinfo=UTC)
-    frisch = ProbeResult(
-        probe_id="netz",
+def test_the_time_caveat_gets_clearer_with_the_gap():
+    now = datetime(2026, 9, 10, 12, 0, tzinfo=UTC)
+    fresh = ProbeResult(
+        probe_id="network",
         title="T",
         status=ProbeStatus.OK,
-        measured_utc=jetzt,
-        finding_last_seen_utc=jetzt - timedelta(minutes=10),
+        measured_utc=now,
+        finding_last_seen_utc=now - timedelta(minutes=10),
     )
-    alt = frisch.model_copy(update={"finding_last_seen_utc": jetzt - timedelta(days=5)})
+    old = fresh.model_copy(update={"finding_last_seen_utc": now - timedelta(days=5)})
 
-    assert "kurz nach" in frisch.age_note()
-    assert "5 Tage" in alt.age_note()
-    assert "sagt diese Messung nichts" in alt.age_note()
+    assert "shortly after" in fresh.age_note()
+    assert "5 days" in old.age_note()
+    assert "says nothing about the state" in old.age_note()
 
 
-def test_nicht_gemessene_zustaende_gelten_nicht_als_messung():
+def test_states_without_measurement_do_not_count_as_measurement():
     for status in (
         ProbeStatus.FAILED,
         ProbeStatus.NOT_APPLICABLE,
@@ -94,21 +94,21 @@ def test_nicht_gemessene_zustaende_gelten_nicht_als_messung():
     assert ProbeResult(probe_id="x", title="T", status=ProbeStatus.OK).measured is True
 
 
-# --- Netzsonde ---------------------------------------------------------------
+# --- Network probe -----------------------------------------------------------
 
 
-def test_netz_toter_dns_server_stuetzt_den_befund():
+def test_network_a_dead_dns_server_supports_the_finding():
     result = network.interpret(
         payloads(
             {
-                "kind": "ziel",
-                "rolle": "dns",
-                "adresse": "192.168.1.1",
-                "privat": True,
-                "uebersprungen": False,
-                "gesendet": 3,
-                "empfangen": 0,
-                "fehler": "TimedOut",
+                "kind": "target",
+                "role": "dns",
+                "address": "192.168.1.1",
+                "private": True,
+                "skipped": False,
+                "sent": 3,
+                "received": 0,
+                "error": "TimedOut",
             }
         ),
         ["dns"],
@@ -116,22 +116,22 @@ def test_netz_toter_dns_server_stuetzt_den_befund():
 
     assert result.status is ProbeStatus.WARN
     assert result.bearing is ProbeBearing.SUPPORTS
-    assert "antworten nicht" in result.summary
+    assert "do not answer" in result.summary
 
 
-def test_netz_ping_allein_entlastet_den_dns_dienst_nicht():
-    """Ein Host, der auf ICMP antwortet, kann einen toten DNS-Dienst haben."""
+def test_network_ping_alone_does_not_exonerate_the_dns_service():
+    """A host that answers ICMP can have a dead DNS service."""
     result = network.interpret(
         payloads(
             {
-                "kind": "ziel",
-                "rolle": "dns",
-                "adresse": "192.168.1.1",
-                "privat": True,
-                "uebersprungen": False,
-                "gesendet": 3,
-                "empfangen": 3,
-                "schnitt_ms": 1.0,
+                "kind": "target",
+                "role": "dns",
+                "address": "192.168.1.1",
+                "private": True,
+                "skipped": False,
+                "sent": 3,
+                "received": 3,
+                "avg_ms": 1.0,
             }
         ),
         ["dns"],
@@ -139,28 +139,28 @@ def test_netz_ping_allein_entlastet_den_dns_dienst_nicht():
 
     assert result.status is ProbeStatus.OK
     assert result.bearing is ProbeBearing.INCONCLUSIVE
-    assert "Namensabfrage wurde nicht" in result.summary
+    assert "No name query was performed" in result.summary
 
 
-def test_netz_ping_gut_aber_namensabfrage_scheitert_ist_der_kernfall():
+def test_network_ping_good_but_name_query_fails_is_the_core_case():
     result = network.interpret(
         payloads(
             {
-                "kind": "ziel",
-                "rolle": "dns",
-                "adresse": "10.0.0.53",
-                "privat": True,
-                "uebersprungen": False,
-                "gesendet": 3,
-                "empfangen": 3,
-                "schnitt_ms": 0.8,
+                "kind": "target",
+                "role": "dns",
+                "address": "10.0.0.53",
+                "private": True,
+                "skipped": False,
+                "sent": 3,
+                "received": 3,
+                "avg_ms": 0.8,
             },
             {
-                "kind": "dnsabfrage",
+                "kind": "dnsquery",
                 "server": "10.0.0.53",
                 "name": "WS-4711",
-                "erfolg": False,
-                "fehler": "System.ComponentModel.Win32Exception",
+                "success": False,
+                "error": "System.ComponentModel.Win32Exception",
             },
         ),
         ["dns"],
@@ -171,28 +171,28 @@ def test_netz_ping_gut_aber_namensabfrage_scheitert_ist_der_kernfall():
     assert "1014" in result.summary
 
 
-def test_netz_oeffentliche_adresse_wird_nicht_gemessen():
+def test_network_a_public_address_is_not_measured():
     result = network.interpret(
         payloads(
             {
-                "kind": "ziel",
-                "rolle": "dns",
-                "adresse": "8.8.8.8",
-                "privat": False,
-                "uebersprungen": True,
-                "grund": "oeffentlich",
+                "kind": "target",
+                "role": "dns",
+                "address": "8.8.8.8",
+                "private": False,
+                "skipped": True,
+                "reason": "public",
             }
         ),
         ["dns"],
     )[0]
 
     assert result.status is ProbeStatus.NOT_APPLICABLE
-    assert "nur im lokalen Netz" in result.summary
+    assert "only measures within the local network" in result.summary
 
 
-def test_netz_ohne_eintrag_ist_nicht_anwendbar_und_nicht_unauffaellig():
+def test_network_without_configuration_is_not_applicable_and_not_unremarkable():
     result = network.interpret(
-        payloads({"kind": "leer", "rolle": "dhcp", "grund": "Keine Schnittstelle per DHCP."}),
+        payloads({"kind": "empty", "role": "dhcp", "reason": "No interface uses DHCP."}),
         ["dhcp"],
     )[0]
 
@@ -200,29 +200,29 @@ def test_netz_ohne_eintrag_ist_nicht_anwendbar_und_nicht_unauffaellig():
     assert result.measured is False
 
 
-def test_netz_findet_sein_ziel_ueber_provider_und_id():
+def test_network_finds_its_target_by_provider_and_id():
     probe = network.NetworkProbe.__new__(network.NetworkProbe)
     dns = make_finding(provider="Microsoft-Windows-DNS-Client", event_id=1014)
-    fremd = make_finding(provider="EventLog", event_id=1014)
+    other = make_finding(provider="EventLog", event_id=1014)
 
     assert probe.target_for(dns) == "dns"
-    assert probe.target_for(fremd) is None
+    assert probe.target_for(other) is None
 
 
-# --- Dienstsonde -------------------------------------------------------------
+# --- Service probe -----------------------------------------------------------
 
 
-def test_dienst_gestoppt_und_automatisch_stuetzt_den_befund():
+def test_service_stopped_and_automatic_supports_the_finding():
     result = services.interpret(
         payloads(
             {
-                "kind": "dienst",
-                "gesucht": "Druckwarteschlange",
-                "gefunden": True,
+                "kind": "service",
+                "searched": "Druckwarteschlange",
+                "found": True,
                 "name": "Spooler",
-                "anzeigename": "Druckwarteschlange",
-                "zustand": "Stopped",
-                "starttyp": "Auto",
+                "display_name": "Druckwarteschlange",
+                "state": "Stopped",
+                "start_mode": "Auto",
             }
         ),
         ["Druckwarteschlange"],
@@ -232,35 +232,35 @@ def test_dienst_gestoppt_und_automatisch_stuetzt_den_befund():
     assert result.bearing is ProbeBearing.SUPPORTS
 
 
-def test_dienst_laeuft_spricht_gegen_den_befund():
+def test_a_running_service_speaks_against_the_finding():
     result = services.interpret(
         payloads(
             {
-                "kind": "dienst",
-                "gesucht": "Druckwarteschlange",
-                "gefunden": True,
+                "kind": "service",
+                "searched": "Print Spooler",
+                "found": True,
                 "name": "Spooler",
-                "zustand": "Running",
-                "starttyp": "Auto",
+                "state": "Running",
+                "start_mode": "Auto",
             }
         ),
-        ["Druckwarteschlange"],
+        ["Print Spooler"],
     )[0]
 
     assert result.status is ProbeStatus.OK
     assert result.bearing is ProbeBearing.WEAKENS
 
 
-def test_dienst_deaktiviert_ist_selbst_ein_befund():
+def test_a_disabled_service_is_a_finding_in_itself():
     result = services.interpret(
         payloads(
             {
-                "kind": "dienst",
-                "gesucht": "Windows Update",
-                "gefunden": True,
+                "kind": "service",
+                "searched": "Windows Update",
+                "found": True,
                 "name": "wuauserv",
-                "zustand": "Stopped",
-                "starttyp": "Disabled",
+                "state": "Stopped",
+                "start_mode": "Disabled",
             }
         ),
         ["Windows Update"],
@@ -268,40 +268,40 @@ def test_dienst_deaktiviert_ist_selbst_ein_befund():
 
     assert result.status is ProbeStatus.WARN
     assert result.bearing is ProbeBearing.SUPPORTS
-    assert "Deaktiviert" in result.summary
+    assert "Disabled" in result.summary
 
 
-def test_dienst_manuell_gestoppt_ist_der_vorgesehene_zustand():
+def test_a_manual_stopped_service_is_the_intended_state():
     result = services.interpret(
         payloads(
             {
-                "kind": "dienst",
-                "gesucht": "Diagnoserichtliniendienst",
-                "gefunden": True,
+                "kind": "service",
+                "searched": "Diagnostic Policy Service",
+                "found": True,
                 "name": "DPS",
-                "zustand": "Stopped",
-                "starttyp": "Manual",
+                "state": "Stopped",
+                "start_mode": "Manual",
             }
         ),
-        ["Diagnoserichtliniendienst"],
+        ["Diagnostic Policy Service"],
     )[0]
 
     assert result.status is ProbeStatus.OK
     assert result.bearing is ProbeBearing.INCONCLUSIVE
 
 
-def test_dienst_nicht_gefunden_nennt_die_sprachfassung_als_moeglichkeit():
+def test_a_service_not_found_names_the_language_version_as_a_possibility():
     result = services.interpret(
-        payloads({"kind": "dienst", "gesucht": "Print Spooler", "gefunden": False}),
+        payloads({"kind": "service", "searched": "Print Spooler", "found": False}),
         ["Print Spooler"],
     )[0]
 
     assert result.status is ProbeStatus.NOT_APPLICABLE
-    assert "Sprachfassung" in result.summary
+    assert "language version" in result.summary
 
 
-def test_dienst_ziel_kommt_aus_der_ersten_property():
-    """SCM 7031 traegt den Anzeigenamen in properties[0] - nicht den Dienstnamen."""
+def test_the_service_target_comes_from_the_first_property():
+    """SCM 7031 carries the display name in properties[0] - not the service name."""
     probe = services.ServiceProbe.__new__(services.ServiceProbe)
     finding = make_finding(
         provider="Service Control Manager",
@@ -311,41 +311,41 @@ def test_dienst_ziel_kommt_aus_der_ersten_property():
     assert probe.target_for(finding) == "Druckwarteschlange"
 
 
-# --- Datentraegersonde -------------------------------------------------------
+# --- Storage probe -----------------------------------------------------------
 
 
-def test_datentraeger_gesund_entlastet_ausdruecklich_nicht():
+def test_storage_healthy_explicitly_does_not_exonerate():
     result = storage.interpret(
         payloads(
             {
-                "kind": "datentraeger",
+                "kind": "disk",
                 "name": "Samsung SSD 980",
-                "medium": "SSD",
-                "gesundheit": "Healthy",
-                "groesse_b": 1_000_204_886_016,
-                "lesefehler": 0,
-                "schreibfehler": 0,
-                "zaehler_da": True,
+                "media": "SSD",
+                "health": "Healthy",
+                "size_b": 1_000_204_886_016,
+                "read_errors": 0,
+                "write_errors": 0,
+                "counters_available": True,
             },
-            {"kind": "smart", "instanz": "SCSI\\Disk", "ausfall_vorhergesagt": False},
+            {"kind": "smart", "instance": "SCSI\\Disk", "failure_predicted": False},
         )
     )
 
     assert result.status is ProbeStatus.OK
     assert result.bearing is ProbeBearing.INCONCLUSIVE
-    assert "schliesst einen Defekt nicht aus" in result.summary
+    assert "does not rule out a defect" in result.summary
 
 
-def test_datentraeger_fehlerzaehler_stuetzt_trotz_gesundem_gesamtstatus():
+def test_storage_error_counters_support_despite_a_healthy_overall_status():
     result = storage.interpret(
         payloads(
             {
-                "kind": "datentraeger",
+                "kind": "disk",
                 "name": "WDC WD10",
-                "gesundheit": "Healthy",
-                "lesefehler": 12,
-                "schreibfehler": 3,
-                "zaehler_da": True,
+                "health": "Healthy",
+                "read_errors": 12,
+                "write_errors": 3,
+                "counters_available": True,
             }
         )
     )
@@ -355,21 +355,21 @@ def test_datentraeger_fehlerzaehler_stuetzt_trotz_gesundem_gesamtstatus():
     assert "15" in result.summary
 
 
-def test_datentraeger_vorhergesagter_ausfall_traegt_den_zuordnungsvorbehalt():
+def test_storage_predicted_failure_carries_the_attribution_caveat():
     result = storage.interpret(
         payloads(
-            {"kind": "datentraeger", "name": "WDC WD10", "gesundheit": "Warning"},
-            {"kind": "smart", "instanz": "SCSI\\Disk", "ausfall_vorhergesagt": True},
+            {"kind": "disk", "name": "WDC WD10", "health": "Warning"},
+            {"kind": "smart", "instance": "SCSI\\Disk", "failure_predicted": True},
         )
     )
 
     assert result.status is ProbeStatus.WARN
     assert result.bearing is ProbeBearing.SUPPORTS
-    assert any("Device\\HarddiskN" in zeile for zeile in result.details)
+    assert any("Device\\HarddiskN" in line for line in result.details)
 
 
-def test_datentraeger_ohne_werte_ist_nicht_messbar():
-    result = storage.interpret(payloads({"kind": "hinweis", "text": "Get-PhysicalDisk fehlt"}))
+def test_storage_without_values_is_not_measurable():
+    result = storage.interpret(payloads({"kind": "note", "text": "Get-PhysicalDisk missing"}))
     assert result.status is ProbeStatus.UNAVAILABLE
     assert result.measured is False
 
@@ -378,10 +378,10 @@ def test_datentraeger_ohne_werte_ist_nicht_messbar():
 
 
 class FakeProbe:
-    """Eine Sonde, die nicht misst, sondern liefert, was der Test vorgibt."""
+    """A probe that does not measure but returns what the test prescribes."""
 
-    probe_id = "netz"
-    title = "Netzpfad und Namensaufloesung"
+    probe_id = "network"
+    title = "Network path and name resolution"
 
     def __init__(self, results: list[ProbeResult]) -> None:
         self.results = results
@@ -396,7 +396,7 @@ class FakeProbe:
 
 
 def local_runner(config: Config, probes) -> ProbeRunner:
-    """Runner, der die Plattformpruefung nicht braucht."""
+    """Runner that does not need the platform check."""
 
     class Runner(ProbeRunner):
         def blocked_reason(self) -> str | None:
@@ -405,11 +405,11 @@ def local_runner(config: Config, probes) -> ProbeRunner:
     return Runner(config, run_host="WS-4711", local_host="WS-4711", probes=probes)
 
 
-def test_runner_startet_eine_sonde_einmal_fuer_viele_befunde():
+def test_the_runner_starts_a_probe_once_for_many_findings():
     probe = FakeProbe(
         [
             ProbeResult(
-                probe_id="netz", title="DNS", status=ProbeStatus.OK, target="dns",
+                probe_id="network", title="DNS", status=ProbeStatus.OK, target="dns",
                 bearing=ProbeBearing.WEAKENS,
             )
         ]
@@ -419,77 +419,77 @@ def test_runner_startet_eine_sonde_einmal_fuer_viele_befunde():
         for i in range(4)
     ]
 
-    gemessen = local_runner(Config(), [probe]).attach(findings)
+    measured = local_runner(Config(), [probe]).attach(findings)
 
     assert len(probe.calls) == 1
-    assert gemessen == 1
+    assert measured == 1
     assert all(len(f.probes) == 1 for f in findings)
 
 
-def test_runner_stuft_ein_spricht_dagegen_bei_altem_befund_ab():
-    """Der Zeitabstand hat eine Folge im Code, nicht nur einen Satz darunter."""
-    ergebnis = ProbeResult(
-        probe_id="netz",
+def test_the_runner_downgrades_speaks_against_for_an_old_finding():
+    """The time gap has a consequence in the code, not just a sentence underneath."""
+    result = ProbeResult(
+        probe_id="network",
         title="DNS",
         status=ProbeStatus.OK,
         target="dns",
         bearing=ProbeBearing.WEAKENS,
         measured_utc=WINDOW_END,
     )
-    frisch = make_finding(
+    fresh = make_finding(
         provider="Microsoft-Windows-DNS-Client", event_id=1014, minutes_ago=10
     )
-    alt = make_finding(
+    old = make_finding(
         provider="Microsoft-Windows-DNS-Client", event_id=1014, rule_id="r2", minutes_ago=60 * 30
     )
 
-    local_runner(Config(), [FakeProbe([ergebnis])]).attach([frisch, alt])
+    local_runner(Config(), [FakeProbe([result])]).attach([fresh, old])
 
-    assert frisch.probes[0].bearing is ProbeBearing.WEAKENS
-    assert alt.probes[0].bearing is ProbeBearing.INCONCLUSIVE
+    assert fresh.probes[0].bearing is ProbeBearing.WEAKENS
+    assert old.probes[0].bearing is ProbeBearing.INCONCLUSIVE
 
 
-def test_runner_stuft_ein_stuetzt_nicht_ab():
-    """Ein Dienst, der heute noch steht, stuetzt den Ausfall von vorgestern."""
-    ergebnis = ProbeResult(
-        probe_id="netz",
+def test_the_runner_does_not_downgrade_supports():
+    """A service that is still down today supports the failure of the day before yesterday."""
+    result = ProbeResult(
+        probe_id="network",
         title="DNS",
         status=ProbeStatus.WARN,
         target="dns",
         bearing=ProbeBearing.SUPPORTS,
         measured_utc=WINDOW_END,
     )
-    alt = make_finding(
+    old = make_finding(
         provider="Microsoft-Windows-DNS-Client", event_id=1014, minutes_ago=60 * 72
     )
 
-    local_runner(Config(), [FakeProbe([ergebnis])]).attach([alt])
+    local_runner(Config(), [FakeProbe([result])]).attach([old])
 
-    assert alt.probes[0].bearing is ProbeBearing.SUPPORTS
+    assert old.probes[0].bearing is ProbeBearing.SUPPORTS
 
 
-def test_runner_misst_nicht_auf_einem_fremden_rechner():
-    """Der Lauf eines Servers, ausgewertet am Arbeitsplatz - der Normalfall im 2nd Level."""
+def test_the_runner_does_not_measure_on_a_different_machine():
+    """A server's run analyzed on a workstation - the normal case in 2nd level."""
     findings = [make_finding(provider="Microsoft-Windows-DNS-Client", event_id=1014)]
     runner = ProbeRunner(Config(), run_host="SRV-DC01", local_host="WS-4711")
 
-    gemessen = runner.attach(findings)
+    measured = runner.attach(findings)
 
-    assert gemessen == 0
+    assert measured == 0
     assert len(findings[0].probes) == 1
     assert findings[0].probes[0].status is ProbeStatus.UNAVAILABLE
     assert "SRV-DC01" in findings[0].probes[0].summary
 
 
-def test_runner_akzeptiert_fqdn_gegen_kurznamen():
+def test_the_runner_accepts_an_fqdn_against_the_short_name():
     runner = ProbeRunner(Config(), run_host="ws-4711.intern.example", local_host="WS-4711")
-    grund = runner.blocked_reason()
-    # Auf Nicht-Windows bleibt die Plattformpruefung stehen; der Rechnername
-    # darf jedenfalls nicht der Grund sein.
-    assert grund is None or "Windows" in grund
+    reason = runner.blocked_reason()
+    # On non-Windows the platform check remains; the machine name must not be
+    # the reason in any case.
+    assert reason is None or "Windows" in reason
 
 
-def test_abgeschaltete_sonde_bleibt_in_der_karte_sichtbar():
+def test_a_disabled_probe_stays_visible_in_the_card():
     config = Config()
     config.probes.network = False
     findings = [make_finding(provider="Microsoft-Windows-DNS-Client", event_id=1014)]
@@ -500,7 +500,7 @@ def test_abgeschaltete_sonde_bleibt_in_der_karte_sichtbar():
     assert findings[0].probes[0].status is ProbeStatus.DISABLED
 
 
-def test_ganz_abgeschaltete_sonden_erzeugen_keinen_eintrag():
+def test_completely_disabled_probes_produce_no_entry():
     config = Config()
     config.probes.enabled = False
     findings = [make_finding(provider="Microsoft-Windows-DNS-Client", event_id=1014)]
@@ -510,19 +510,19 @@ def test_ganz_abgeschaltete_sonden_erzeugen_keinen_eintrag():
     assert findings[0].probes == []
 
 
-def test_eine_abstuerzende_sonde_toetet_den_lauf_nicht():
-    class Kaputt(FakeProbe):
+def test_a_crashing_probe_does_not_kill_the_run():
+    class Broken(FakeProbe):
         def run(self, targets):
-            raise RuntimeError("Zugriff verweigert")
+            raise RuntimeError("access denied")
 
     findings = [make_finding(provider="Microsoft-Windows-DNS-Client", event_id=1014)]
-    local_runner(Config(), [Kaputt([])]).attach(findings)
+    local_runner(Config(), [Broken([])]).attach(findings)
 
     assert findings[0].probes[0].status is ProbeStatus.UNAVAILABLE
     assert "RuntimeError" in (findings[0].probes[0].detail_error or "")
 
 
-def test_sonden_landen_in_der_json_ausgabe_des_befunds():
+def test_probes_end_up_in_the_json_output_of_the_finding():
     findings = [make_finding(provider="Microsoft-Windows-DNS-Client", event_id=1014)]
     local_runner(
         Config(),
@@ -530,7 +530,7 @@ def test_sonden_landen_in_der_json_ausgabe_des_befunds():
             FakeProbe(
                 [
                     ProbeResult(
-                        probe_id="netz", title="DNS", status=ProbeStatus.OK, target="dns",
+                        probe_id="network", title="DNS", status=ProbeStatus.OK, target="dns",
                         summary="ok",
                     )
                 ]
@@ -538,39 +538,39 @@ def test_sonden_landen_in_der_json_ausgabe_des_befunds():
         ],
     ).attach(findings)
 
-    ausgabe = findings[0].to_public_dict()
-    assert ausgabe["sonden"][0]["sonde"] == "netz"
-    assert "zeitvorbehalt" in ausgabe["sonden"][0]
+    output = findings[0].to_public_dict()
+    assert output["probes"][0]["probe"] == "network"
+    assert "time_caveat" in output["probes"][0]
 
 
-# --- Leseschicht -------------------------------------------------------------
+# --- Reading layer -----------------------------------------------------------
 
 
-def test_read_payloads_ueberliest_kaputte_zeilen_und_findet_den_status():
-    ergebnis = read_payloads(
+def test_read_payloads_skips_broken_lines_and_finds_the_status():
+    result = read_payloads(
         [
-            '{"kind":"ziel","rolle":"dns"}',
-            "das ist kein JSON",
+            '{"kind":"target","role":"dns"}',
+            "this is not JSON",
             "",
-            '{"__status":{"probe":"netz","exception":"System.UnauthorizedAccessException"}}',
+            '{"__status":{"probe":"network","exception":"System.UnauthorizedAccessException"}}',
         ]
     )
 
-    assert len(ergebnis.items) == 1
-    assert ergebnis.parse_errors == 1
-    assert ergebnis.exception == "System.UnauthorizedAccessException"
+    assert len(result.items) == 1
+    assert result.parse_errors == 1
+    assert result.exception == "System.UnauthorizedAccessException"
 
 
 @pytest.mark.parametrize(
-    ("provider", "event_id", "erwartet"),
+    ("provider", "event_id", "expected"),
     [
-        ("disk", 153, "alle"),
-        ("storahci", 129, "alle"),
-        ("Ntfs", 55, "alle"),
+        ("disk", 153, "all"),
+        ("storahci", 129, "all"),
+        ("Ntfs", 55, "all"),
         ("EventLog", 6005, None),
     ],
 )
-def test_datentraegersonde_haengt_an_den_richtigen_befunden(provider, event_id, erwartet):
+def test_the_storage_probe_hangs_on_the_right_findings(provider, event_id, expected):
     probe = storage.StorageProbe.__new__(storage.StorageProbe)
     finding = make_finding(provider=provider, event_id=event_id)
-    assert probe.target_for(finding) == erwartet
+    assert probe.target_for(finding) == expected

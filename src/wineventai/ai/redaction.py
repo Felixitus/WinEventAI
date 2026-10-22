@@ -1,17 +1,17 @@
-"""Redaction vor jedem Prompt - mit stabilen Pseudonymen.
+"""Redaction before every prompt - with stable pseudonyms.
 
-Pauschale Sternchen waeren hier ein Denkfehler: Sie zerstoeren genau die
-Information, fuer die es den "Korrelator" gibt, naemlich ob zwei Befunde
-dasselbe Konto oder denselben Host betreffen. Ersetzt wird deshalb konsistent
-je Lauf - ``BENUTZER_1``, ``HOST_1``, ``SID_1`` - mit einer Zuordnungstabelle,
-die nur im Speicher lebt.
+Blanket asterisks would be a mistake in reasoning here: they destroy exactly
+the information the "correlator" exists for, namely whether two findings
+concern the same account or the same host. Replacement is therefore consistent
+per run - ``USER_1``, ``HOST_1``, ``SID_1`` - with a mapping table that only
+lives in memory.
 
-Zwei Details, die leicht untergehen:
+Two details that are easily missed:
 
-* Ersetzt wird auf dem ``EventRecord`` nach der Normalisierung, nicht per
-  Suchen-und-Ersetzen im fertigen Prompttext. Sonst erwischt man Teilzeichenketten.
-* Beim Rueckersetzen wird geprueft, ob das Modell Platzhalter ERFUNDEN hat. Ein
-  ``BENUTZER_7``, den es im Buendel nie gab, ist ein Halluzinationssignal.
+* Replacement happens on the ``EventRecord`` after normalization, not by
+  search-and-replace in the finished prompt text. Otherwise substrings get hit.
+* When restoring, it is checked whether the model INVENTED placeholders. A
+  ``USER_7`` that never existed in the bundle is a hallucination signal.
 """
 
 from __future__ import annotations
@@ -26,9 +26,10 @@ _IPV6 = re.compile(r"\b(?:[0-9A-Fa-f]{1,4}:){2,7}[0-9A-Fa-f]{1,4}\b")
 _MAC = re.compile(r"\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b")
 _USERPATH = re.compile(r"(?i)\b([A-Z]:\\Users\\)([^\\\s\"'<>|]+)")
 _DOMAIN_USER = re.compile(r"\b([A-Za-z0-9_-]{2,32})\\([A-Za-z0-9._-]{2,32})\b")
-_PLACEHOLDER = re.compile(r"\b(BENUTZER|HOST|SID|IP|MAC|DOMAENE)_(\d+)\b")
+_PLACEHOLDER = re.compile(r"\b(USER|HOST|SID|IP|MAC|DOMAIN)_(\d+)\b")
 
-#: Konten, die auf jedem Windows gleich heissen und nichts ueber Personen sagen.
+#: Accounts with the same name on every Windows that say nothing about people.
+#: The German spellings are what a German Windows writes into its events.
 _WELL_KNOWN_ACCOUNTS = {
     "system", "local service", "network service", "lokaler dienst",
     "netzwerkdienst", "nt authority", "nt-autoritaet", "administrator",
@@ -39,20 +40,20 @@ _WELL_KNOWN_SIDS = {"S-1-5-18", "S-1-5-19", "S-1-5-20"}
 
 
 class Redactor:
-    """Ersetzt personenbezogene Bestandteile durch stabile Pseudonyme."""
+    """Replaces personal parts with stable pseudonyms."""
 
     def __init__(self, *, enabled: bool = True) -> None:
         self.enabled = enabled
         self._maps: dict[str, dict[str, str]] = {
-            "BENUTZER": {},
+            "USER": {},
             "HOST": {},
             "SID": {},
             "IP": {},
             "MAC": {},
-            "DOMAENE": {},
+            "DOMAIN": {},
         }
 
-    # --- Zuordnung -----------------------------------------------------------
+    # --- Mapping -------------------------------------------------------------
 
     def _token(self, kind: str, value: str) -> str:
         table = self._maps[kind]
@@ -62,7 +63,7 @@ class Redactor:
         return table[key]
 
     def mapping(self) -> dict[str, str]:
-        """Platzhalter -> Originalwert. Bleibt lokal, wandert nie in ein Bundle."""
+        """Placeholder -> original value. Stays local, never goes into a bundle."""
         out: dict[str, str] = {}
         for kind, table in self._maps.items():
             for original, token in table.items():
@@ -73,7 +74,7 @@ class Redactor:
     def known_placeholders(self) -> set[str]:
         return set(self.mapping())
 
-    # --- Ersetzen ------------------------------------------------------------
+    # --- Replacing -----------------------------------------------------------
 
     def register_host(self, host: str) -> str:
         if not host:
@@ -81,7 +82,7 @@ class Redactor:
         return self._token("HOST", host.split(".")[0])
 
     def text(self, value: str | None) -> str | None:
-        """Redigiert einen Freitext."""
+        """Redacts a free text."""
         if value is None or not self.enabled:
             return value
 
@@ -92,13 +93,13 @@ class Redactor:
             return self._token("SID", found)
 
         def userpath_sub(match: re.Match[str]) -> str:
-            return match.group(1) + self._token("BENUTZER", match.group(2))
+            return match.group(1) + self._token("USER", match.group(2))
 
         def domain_user_sub(match: re.Match[str]) -> str:
             domain, user = match.group(1), match.group(2)
             if domain.casefold() in _WELL_KNOWN_ACCOUNTS:
                 return match.group(0)
-            return f"{self._token('DOMAENE', domain)}\\{self._token('BENUTZER', user)}"
+            return f"{self._token('DOMAIN', domain)}\\{self._token('USER', user)}"
 
         result = _SID.sub(sid_sub, value)
         result = _MAC.sub(lambda m: self._token("MAC", m.group(0)), result)
@@ -107,7 +108,7 @@ class Redactor:
         result = _USERPATH.sub(userpath_sub, result)
         result = _DOMAIN_USER.sub(domain_user_sub, result)
 
-        # Bekannte Hostnamen zuletzt, damit sie nicht Teile anderer Treffer zerlegen.
+        # Known host names last, so they do not tear apart parts of other hits.
         for original, token in sorted(
             self._maps["HOST"].items(), key=lambda item: -len(item[0])
         ):
@@ -115,7 +116,7 @@ class Redactor:
         return result
 
     def record(self, record: EventRecord) -> EventRecord:
-        """Liefert eine redigierte Kopie eines Events."""
+        """Returns a redacted copy of an event."""
         if not self.enabled:
             return record
         if record.computer:
@@ -140,10 +141,10 @@ class Redactor:
             }
         )
 
-    # --- Rueckersetzen -------------------------------------------------------
+    # --- Restoring -----------------------------------------------------------
 
     def restore(self, value: str) -> str:
-        """Setzt Platzhalter wieder in Klartext um - fuer den vollstaendigen Bericht."""
+        """Turns placeholders back into plain text - for the full report."""
         mapping = self.mapping()
         result = value
         for token, original in sorted(mapping.items(), key=lambda item: -len(item[0])):
@@ -151,10 +152,10 @@ class Redactor:
         return result
 
     def invented_placeholders(self, value: str) -> set[str]:
-        """Platzhalter im Text, die es im Buendel nie gab.
+        """Placeholders in the text that never existed in the bundle.
 
-        Das ist ein eigenstaendiges Halluzinationssignal und wird genauso
-        behandelt wie eine fehlgeschlagene Evidenzpruefung.
+        This is a hallucination signal of its own and is treated exactly like a
+        failed evidence check.
         """
         known = self.known_placeholders()
         found = {f"{match.group(1)}_{match.group(2)}" for match in _PLACEHOLDER.finditer(value)}

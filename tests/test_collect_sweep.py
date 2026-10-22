@@ -1,9 +1,8 @@
-"""Fehler-Sweep an der Prozessgrenze - ohne Windows, ohne PowerShell.
+"""Error sweep at the process boundary - without Windows, without PowerShell.
 
-Getestet wird ``parse_sweep`` / ``build_sweep_results`` mit Fixture-Zeilen und
-``ErrorSweepCollector`` mit ersetztem ``run_script``. Der Kern der Zusage: Ein
-Kanal, den der Sweep nicht erreicht hat, sieht nie aus wie ein Kanal ohne
-Treffer.
+``parse_sweep`` / ``build_sweep_results`` are tested with fixture lines and
+``ErrorSweepCollector`` with a replaced ``run_script``. The core of the promise:
+a channel the sweep did not reach never looks like a channel without hits.
 """
 
 from __future__ import annotations
@@ -75,7 +74,7 @@ NOT_FOUND = "System.Exception"
 DENIED = "System.UnauthorizedAccessException"
 
 
-def test_kanal_mit_treffern_bekommt_eine_eigene_zeile_mit_seinen_records() -> None:
+def test_a_channel_with_hits_gets_its_own_row_with_its_records() -> None:
     lines = [
         plan_line(["A/Operational", "B/Operational"]),
         error_line("A/Operational", 5),
@@ -93,7 +92,7 @@ def test_kanal_mit_treffern_bekommt_eine_eigene_zeile_mit_seinen_records() -> No
     assert all(record.source_ref == "A/Operational" for record in hit.records)
 
 
-def test_kanaele_ohne_treffer_werden_gezaehlt_aber_nicht_einzeln_gelistet() -> None:
+def test_channels_without_hits_are_counted_but_not_listed_individually() -> None:
     lines = [
         plan_line(["A", "B", "C"]),
         error_line("A", 1),
@@ -108,12 +107,12 @@ def test_kanaele_ohne_treffer_werden_gezaehlt_aber_nicht_einzeln_gelistet() -> N
     assert "sweep:C" not in sources
     summary = sources[SUMMARY_SOURCE_ID].result
     assert summary.status == SourceStatus.COLLECTED
-    assert "3 Kanaele" in summary.note
-    assert "2 ohne Treffer" in summary.note
+    assert "3 channels" in summary.note
+    assert "2 without hits" in summary.note
 
 
-def test_nicht_erreichte_kanaele_machen_den_sweep_unvollstaendig_statt_leer() -> None:
-    """Zeitlimit nach dem ersten Kanal: B und C wurden nie gelesen."""
+def test_unreached_channels_make_the_sweep_incomplete_instead_of_empty() -> None:
+    """Time limit after the first channel: B and C were never read."""
     lines = [
         plan_line(["A", "B", "C"]),
         channel_line("A", 0, NOT_FOUND),
@@ -124,10 +123,10 @@ def test_nicht_erreichte_kanaele_machen_den_sweep_unvollstaendig_statt_leer() ->
     assert summary.status == SourceStatus.TIMED_OUT
     assert summary.status in INCONCLUSIVE
     assert "B, C" in summary.note
-    assert "keine Aussage" in summary.note
+    assert "No statement is possible" in summary.note
 
 
-def test_angefangener_kanal_ohne_abschlusszeile_gilt_als_abgebrochen() -> None:
+def test_a_started_channel_without_closing_line_counts_as_timed_out() -> None:
     lines = [
         plan_line(["A"]),
         error_line("A", 1),
@@ -138,10 +137,10 @@ def test_angefangener_kanal_ohne_abschlusszeile_gilt_als_abgebrochen() -> None:
     partial = sources["sweep:A"]
     assert partial.result.status == SourceStatus.TIMED_OUT
     assert partial.result.records_read == 2
-    assert "Weitere Fehler" in partial.result.note
+    assert "Further errors" in partial.result.note
 
 
-def test_grenze_begrenzt_das_behalten_aber_nicht_die_zaehlung() -> None:
+def test_the_limit_caps_retention_but_not_the_count() -> None:
     lines = [plan_line(["A"])]
     lines += [error_line("A", minute) for minute in range(30)]
     lines += [channel_line("A", 30), final_line(30)]
@@ -149,26 +148,26 @@ def test_grenze_begrenzt_das_behalten_aber_nicht_die_zaehlung() -> None:
     sources = by_id(build(lines, keep=10))
 
     item = sources["sweep:A"]
-    assert item.result.records_read == 30, "gezaehlt wird alles"
-    assert item.result.records_retained == 10, "behalten nur bis zur Grenze"
+    assert item.result.records_read == 30, "everything is counted"
+    assert item.result.records_retained == 10, "retained only up to the limit"
     assert item.result.status == SourceStatus.TRUNCATED
     assert sources[SUMMARY_SOURCE_ID].result.records_read == 30
 
 
-def test_fehlende_rechte_an_einem_kanal_erscheinen_als_eigene_zeile() -> None:
+def test_missing_rights_on_a_channel_show_up_as_a_row_of_its_own() -> None:
     lines = [
-        plan_line(["Geheim/Operational"]),
-        channel_line("Geheim/Operational", 0, DENIED),
+        plan_line(["Secret/Operational"]),
+        channel_line("Secret/Operational", 0, DENIED),
         final_line(0),
     ]
     sources = by_id(build(lines))
 
-    denied = sources["sweep:Geheim/Operational"].result
+    denied = sources["sweep:Secret/Operational"].result
     assert denied.status == SourceStatus.NO_PERMISSION
-    assert "1 nicht vollstaendig erhoben" in sources[SUMMARY_SOURCE_ID].result.note
+    assert "1 not fully collected" in sources[SUMMARY_SOURCE_ID].result.note
 
 
-def test_ohne_kanalplan_gibt_es_keine_aussage_ueber_einzelne_kanaele() -> None:
+def test_without_a_channel_plan_nothing_is_said_about_individual_channels() -> None:
     sources = build([final_line(0, "System.InvalidOperationException")])
 
     assert len(sources) == 1
@@ -178,28 +177,28 @@ def test_ohne_kanalplan_gibt_es_keine_aussage_ueber_einzelne_kanaele() -> None:
     assert summary.status != SourceStatus.EMPTY
 
 
-def test_ohne_kanalplan_und_mit_zeitlimit_heisst_es_abgebrochen() -> None:
+def test_without_a_channel_plan_and_with_time_limit_it_is_timed_out() -> None:
     sources = build([], timed_out=True)
 
     assert sources[0].result.status == SourceStatus.TIMED_OUT
 
 
-def test_ohne_kanalplan_und_ohne_statuszeile_ist_es_ein_fehler_kein_leerer_sweep() -> None:
+def test_without_plan_and_without_status_line_it_is_a_failure_not_an_empty_sweep() -> None:
     sources = build([])
 
     assert sources[0].result.status == SourceStatus.FAILED
 
 
-def test_leerer_sweep_mit_vollstaendigem_plan_ist_ehrlich_leer() -> None:
+def test_an_empty_sweep_with_a_complete_plan_is_honestly_empty() -> None:
     lines = [plan_line(["A", "B"]), channel_line("A", 0), channel_line("B", 0), final_line(0)]
 
     summary = by_id(build(lines))[SUMMARY_SOURCE_ID].result
 
     assert summary.status == SourceStatus.EMPTY
-    assert "Warnungen und Informationsereignisse" in summary.note
+    assert "Warnings and informational events" in summary.note
 
 
-def test_kanalnamen_werden_ohne_ruecksicht_auf_gross_kleinschreibung_zugeordnet() -> None:
+def test_channel_names_are_matched_case_insensitively() -> None:
     lines = [
         plan_line(["Microsoft-Windows-Foo/Operational"]),
         error_line("microsoft-windows-foo/operational", 1),
@@ -213,19 +212,19 @@ def test_kanalnamen_werden_ohne_ruecksicht_auf_gross_kleinschreibung_zugeordnet(
     assert item.result.records_read == 1
 
 
-def test_records_aus_einem_kanal_ausserhalb_des_plans_werden_nicht_verschwiegen() -> None:
+def test_records_from_a_channel_outside_the_plan_are_not_hidden() -> None:
     lines = [
         plan_line(["A"]),
         channel_line("A", 0),
-        error_line("Unerwartet", 1),
+        error_line("Unexpected", 1),
         final_line(1),
     ]
     sources = by_id(build(lines))
 
-    assert sources["sweep:Unerwartet"].result.records_read == 1
+    assert sources["sweep:Unexpected"].result.records_read == 1
 
 
-def test_uebersprungene_kanaele_stehen_mit_grund_in_der_uebersicht() -> None:
+def test_skipped_channels_appear_with_their_reason_in_the_summary() -> None:
     lines = [
         plan_line(["A"], disabled=120, type=40, excluded=7, empty=3, unreadable=2),
         channel_line("A", 0),
@@ -233,12 +232,12 @@ def test_uebersprungene_kanaele_stehen_mit_grund_in_der_uebersicht() -> None:
     ]
     note = by_id(build(lines))[SUMMARY_SOURCE_ID].result.note
 
-    assert "120 abgeschaltet" in note
-    assert "2 nicht lesbar" in note
+    assert "120 disabled" in note
+    assert "2 not readable" in note
 
 
-def test_kaputte_zeile_wird_uebersprungen_nicht_geworfen() -> None:
-    lines = [plan_line(["A"]), "{kein json", error_line("A", 1), channel_line("A", 1)]
+def test_a_broken_line_is_skipped_not_raised() -> None:
+    lines = [plan_line(["A"]), "{no json", error_line("A", 1), channel_line("A", 1)]
 
     parsed = parse_sweep(lines, keep_per_channel=10)
 
@@ -258,14 +257,14 @@ def collector(**overrides: object) -> ErrorSweepCollector:
     return ErrorSweepCollector(**fields)  # type: ignore[arg-type]
 
 
-def test_konfigurierte_kanaele_werden_vom_sweep_ausgelassen() -> None:
+def test_configured_channels_are_skipped_by_the_sweep() -> None:
     args = collector(config=ErrorSweepConfig(exclude=["Windows PowerShell"])).script_args()
 
     excluded = args[args.index("-Exclude") + 1].split("|")
     assert excluded == ["Application", "Security", "System", "Windows PowerShell"]
 
 
-def test_level_und_kanaltypen_gehen_als_getrennte_liste_ans_skript() -> None:
+def test_levels_and_channel_types_reach_the_script_as_separated_lists() -> None:
     args = collector().script_args()
 
     assert args[args.index("-Levels") + 1] == "1|2"
@@ -273,22 +272,22 @@ def test_level_und_kanaltypen_gehen_als_getrennte_liste_ans_skript() -> None:
     assert args[args.index("-StartUtc") + 1] == WINDOW_START.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def test_eigenes_zeitfenster_des_sweeps_verkuerzt_nur_den_sweep() -> None:
+def test_the_sweeps_own_time_window_only_shortens_the_sweep() -> None:
     args = collector(config=ErrorSweepConfig(days=1)).script_args()
 
     start = args[args.index("-StartUtc") + 1]
     assert start == "2026-09-09T12:00:00Z"
 
 
-def test_abgeschalteter_sweep_ist_abgeschaltet_und_nicht_leer() -> None:
+def test_a_disabled_sweep_is_disabled_and_not_empty() -> None:
     sources = collector(config=ErrorSweepConfig(enabled=False)).collect_many()
 
     assert [item.result.status for item in sources] == [SourceStatus.DISABLED]
 
 
-def test_bei_evtx_auswertung_wird_nicht_der_lokale_rechner_gelesen(monkeypatch) -> None:
+def test_evtx_analysis_does_not_read_the_local_machine(monkeypatch) -> None:
     def fail(*_args, **_kwargs):
-        raise AssertionError("run_script darf offline nicht aufgerufen werden")
+        raise AssertionError("run_script must not be called offline")
 
     monkeypatch.setattr(sweep_module, "run_script", fail)
     sources = collector(offline=True).collect_many()
@@ -297,13 +296,13 @@ def test_bei_evtx_auswertung_wird_nicht_der_lokale_rechner_gelesen(monkeypatch) 
     assert ".evtx" in sources[0].result.note
 
 
-def test_ohne_powershell_ist_der_sweep_fehlgeschlagen() -> None:
+def test_without_powershell_the_sweep_failed() -> None:
     sources = collector(shell=None).collect_many()
 
     assert sources[0].result.status == SourceStatus.FAILED
 
 
-def test_blockierte_ausfuehrung_wird_als_blockiert_gemeldet(monkeypatch) -> None:
+def test_blocked_execution_is_reported_as_blocked(monkeypatch) -> None:
     def blocked(*_args, **_kwargs) -> ShellRun:
         return ShellRun(
             lines=[],
@@ -319,7 +318,7 @@ def test_blockierte_ausfuehrung_wird_als_blockiert_gemeldet(monkeypatch) -> None
     assert sources[0].result.status == SourceStatus.BLOCKED
 
 
-def test_collector_reicht_zeitlimit_und_strom_an_die_auswertung_weiter(monkeypatch) -> None:
+def test_the_collector_passes_time_limit_and_stream_on_to_the_evaluation(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     def fake(script: str, args: list[str], **kwargs: object) -> ShellRun:
@@ -341,34 +340,34 @@ def test_collector_reicht_zeitlimit_und_strom_an_die_auswertung_weiter(monkeypat
     assert sources["sweep:A"].result.status == SourceStatus.TIMED_OUT
 
 
-def test_leere_levelliste_wird_abgelehnt() -> None:
+def test_an_empty_level_list_is_rejected() -> None:
     with pytest.raises(ValidationError):
         ErrorSweepConfig(levels=[])
 
 
-def test_level_null_ist_kein_schweregrad_und_wird_abgelehnt() -> None:
+def test_level_zero_is_not_a_severity_and_is_rejected() -> None:
     with pytest.raises(ValidationError):
         ErrorSweepConfig(levels=[0, 1])
 
 
-def test_unbekannter_kanaltyp_wird_abgelehnt() -> None:
-    """Lokalisierte Typnamen ("Betriebsbereit") fallen hier auf, nicht erst im Skript."""
+def test_an_unknown_channel_type_is_rejected() -> None:
+    """Localized type names ("Betriebsbereit") are caught here, not in the script."""
     with pytest.raises(ValidationError):
         ErrorSweepConfig(log_types=["Betriebsbereit"])
 
 
-def test_mitgelieferte_konfiguration_schaltet_den_sweep_auf_kritisch_und_fehler() -> None:
+def test_the_bundled_configuration_sets_the_sweep_to_critical_and_error() -> None:
     config = Config.model_validate(default_config_dict())
 
     assert config.collect.error_sweep.enabled is True
     assert config.collect.error_sweep.levels == [1, 2]
 
 
-def test_skriptabbruch_ohne_zeitlimit_ist_ein_fehler_kein_zeitlimit() -> None:
+def test_a_script_abort_without_time_limit_is_a_failure_not_a_timeout() -> None:
     lines = [plan_line(["A", "B"]), error_line("A", 1)]
     sources = by_id(build(lines, timed_out=False))
 
     summary = sources[SUMMARY_SOURCE_ID].result
     assert summary.status == SourceStatus.FAILED
-    assert "Skriptabbruch" in summary.note
+    assert "script abort" in summary.note
     assert sources["sweep:A"].result.status == SourceStatus.FAILED

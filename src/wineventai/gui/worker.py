@@ -1,14 +1,13 @@
-"""Hintergrundarbeit fuer die Oberflaeche.
+"""Background work for the user interface.
 
-Der zentrale Punkt dieser Datei: Ein Lauf dauert Minuten. Liefe er im
-Qt-Hauptthread, waere das Fenster die ganze Zeit eingefroren - Windows wuerde
-es nach kurzer Zeit als "reagiert nicht" markieren. Deshalb laeuft die gesamte
-Pipeline in einem ``QThread``, und die Oberflaeche erfaehrt ueber Signale, was
-gerade passiert.
+The central point of this file: a run takes minutes. If it ran in the Qt main
+thread, the window would be frozen the whole time - Windows would mark it as
+"not responding" after a short while. The whole pipeline therefore runs in a
+``QThread``, and the interface learns via signals what is going on.
 
-Zweiter Punkt: Hier steht KEINE Diagnoselogik. Der Worker ruft genau dieselben
-Funktionen wie die Kommandozeile. Die Oberflaeche ist eine Huelle, sonst driften
-GUI und CLI auseinander und man debuggt am Ende zwei Werkzeuge.
+Second point: there is NO diagnostic logic here. The worker calls exactly the
+same functions as the command line. The interface is a shell; otherwise GUI and
+CLI drift apart and in the end one debugs two tools.
 """
 
 from __future__ import annotations
@@ -27,17 +26,16 @@ from ..rules.loader import RuleLoadError
 
 
 class GuiLogStream:
-    """Faengt das Anwendungslog ab und leitet es als Signal weiter.
+    """Captures the application log and forwards it as a signal.
 
-    Das Anwendungslog schreibt sonst nach ``stderr``, das in einer GUI niemand
-    sieht. Hier wird es zusaetzlich in das Protokollfenster gespiegelt - der
-    Nutzer soll waehrend eines langen Laufs sehen, dass etwas passiert.
+    The application log otherwise writes to ``stderr``, which nobody sees in a
+    GUI. Here it is mirrored into the log window as well - the user should see
+    during a long run that something is happening.
 
-    Das ``try``/``except`` ist nicht Vorsicht, sondern Notwendigkeit: Das
-    Anwendungslog ist prozessweit, dieser Stream haengt aber an EINEM Worker.
-    Ist der Worker weg und irgendetwas loggt noch, wirft Qt
-    "Signal source has been deleted" - und ein Logger, der die Anwendung
-    umbringt, ist schlimmer als gar keiner.
+    The ``try``/``except`` is not caution but necessity: the application log
+    is process-wide, but this stream hangs on ONE worker. If the worker is gone
+    and something still logs, Qt raises "Signal source has been deleted" - and
+    a logger that kills the application is worse than none.
     """
 
     def __init__(self, emit_line: Signal) -> None:
@@ -57,12 +55,12 @@ class GuiLogStream:
 
 
 class RunWorker(QObject):
-    """Fuehrt Erhebung und Auswertung aus und meldet den Fortschritt."""
+    """Runs collection and analysis and reports progress."""
 
-    # Fortschritt in Prozent und ein Klartext, was gerade laeuft.
+    # Progress in percent and plain text of what is running.
     progress = Signal(int, str)
     log_line = Signal(str)
-    # Ein Lauf ist fertig: Laufverzeichnis und Ergebnis.
+    # A run is finished: run directory and result.
     finished_ok = Signal(object, object)
     failed = Signal(str, str)
 
@@ -84,16 +82,16 @@ class RunWorker(QObject):
         self._cancelled = False
 
     def cancel(self) -> None:
-        """Bittet um Abbruch.
+        """Asks for cancellation.
 
-        Ehrlich zu den Grenzen: Ein laufender PowerShell-Aufruf laesst sich von
-        hier aus nicht sofort beenden - er hat sein eigenes Wall-Clock-Limit.
-        Der Abbruch greift zwischen den Quellen, nicht mitten in einer.
+        Honest about the limits: a running PowerShell call cannot be ended
+        immediately from here - it has its own wall-clock limit. Cancellation
+        takes effect between sources, not in the middle of one.
         """
         self._cancelled = True
-        self.log_line.emit("Abbruch angefordert - laufende Quelle wird noch beendet.")
+        self.log_line.emit("Cancellation requested - the current source is still finishing.")
 
-    # --- Ablauf --------------------------------------------------------------
+    # --- Flow ----------------------------------------------------------------
 
     def run(self) -> None:
         log = configure(self.config.log_level, stream=GuiLogStream(self.log_line))
@@ -102,30 +100,30 @@ class RunWorker(QObject):
             log.attach_file(run.applog_path)
 
             if self.existing_run is None:
-                self.progress.emit(5, "Quellen werden erhoben ...")
+                self.progress.emit(5, "Collecting sources ...")
                 collect_all(self.config, run, days=self.days)
                 if self._cancelled:
-                    self.failed.emit("Abgebrochen", "Der Lauf wurde vom Benutzer abgebrochen.")
+                    self.failed.emit("Cancelled", "The run was cancelled by the user.")
                     return
 
-            self.progress.emit(60, "Befunde werden ausgewertet ...")
+            self.progress.emit(60, "Analyzing findings ...")
             result: AnalysisResult = analyze_run(run, self.config)
 
-            self.progress.emit(100, "Fertig.")
+            self.progress.emit(100, "Done.")
             self.finished_ok.emit(run, result)
 
         except CollectionAborted as exc:
-            self.failed.emit("Erhebung abgebrochen", str(exc))
+            self.failed.emit("Collection aborted", str(exc))
         except RuleLoadError as exc:
-            self.failed.emit("Regeln fehlerhaft", str(exc))
+            self.failed.emit("Rules invalid", str(exc))
         except FileNotFoundError as exc:
-            self.failed.emit("Nicht gefunden", str(exc))
-        except Exception as exc:  # noqa: BLE001 - eine GUI darf nie kommentarlos sterben
+            self.failed.emit("Not found", str(exc))
+        except Exception as exc:  # noqa: BLE001 - a GUI must never die without a word
             self.failed.emit(type(exc).__name__, str(exc))
         finally:
             log.detach_file()
-            # Das prozessweite Log wieder von diesem Worker loesen. Sonst zeigt
-            # es nach dem Lauf auf ein Signal, dessen Besitzer bald weg ist.
+            # Detach the process-wide log from this worker again. Otherwise it
+            # points after the run to a signal whose owner will soon be gone.
             configure(self.config.log_level, stream=None)
 
     def _open_or_create_run(self) -> RunDirectory:
@@ -142,18 +140,18 @@ class RunWorker(QObject):
             command_line="wineventai gui",
         )
         self.log_line.emit(
-            f"Lauf angelegt: {run.path} "
-            f"(Zeitfenster {days} Tage, Adminrechte: {'ja' if is_admin() else 'nein'})"
+            f"Run created: {run.path} "
+            f"(time window {days} days, admin rights: {'yes' if is_admin() else 'no'})"
         )
         return run
 
 
 class WorkerHandle:
-    """Haelt Thread und Worker zusammen, damit nichts vorzeitig eingesammelt wird.
+    """Keeps thread and worker together so nothing is collected prematurely.
 
-    Ohne diese Klammer sammelt der Python-Garbage-Collector den Worker ein,
-    waehrend der C++-Thread noch laeuft - das aeussert sich als Absturz ohne
-    Meldung und ist der klassische Anfaengerfehler bei Qt-Threads.
+    Without this clamp the Python garbage collector collects the worker while
+    the C++ thread is still running - that shows up as a crash without a
+    message and is the classic beginner's mistake with Qt threads.
     """
 
     def __init__(self, worker: RunWorker) -> None:

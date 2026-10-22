@@ -1,17 +1,16 @@
-"""Das Hauptfenster.
+"""The main window.
 
-Aufbau von oben nach unten - und die Reihenfolge ist inhaltlich, nicht
-kosmetisch:
+Layout from top to bottom - and the order is about content, not cosmetics:
 
-1. Startleiste: Zeitfenster, Sicherheitsmodus, Start
-2. Kopfzeile mit dem einen Satz, der zuerst gelesen wird
-3. Warnbanner, falls der Zeitraum nicht vollstaendig erhoben wurde
-4. Abdeckung - VOR den Befunden, aus demselben Grund wie im Bericht
-5. Befundliste links, Detail rechts
-6. Protokoll und Statusleiste
+1. Run bar: time window, security mode, start
+2. Headline with the one sentence that is read first
+3. Warning banner, if the period was not collected completely
+4. Coverage - BEFORE the findings, for the same reason as in the report
+5. List of findings on the left, detail on the right
+6. Log and status bar
 
-Das Fenster enthaelt keine Diagnoselogik. Es startet den Worker und stellt
-``ReportModel`` dar; alles andere passiert in der Pipeline.
+The window contains no diagnostic logic. It starts the worker and displays
+``ReportModel``; everything else happens in the pipeline.
 """
 
 from __future__ import annotations
@@ -45,7 +44,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import __version__
-from ..analyze import AnalysisResult
+from ..analyze import REPORT_HTML, AnalysisResult
 from ..collect.rundir import RunDirectory, default_runs_root
 from ..config import Config, load_config
 from ..config.loader import user_config_path, write_user_config
@@ -65,7 +64,7 @@ from .worker import RunWorker, WorkerHandle
 
 def _card(*widgets: QWidget) -> QFrame:
     frame = QFrame()
-    frame.setObjectName("Karte")
+    frame.setObjectName("Card")
     layout = QVBoxLayout(frame)
     layout.setContentsMargins(14, 12, 14, 12)
     layout.setSpacing(8)
@@ -74,17 +73,12 @@ def _card(*widgets: QWidget) -> QFrame:
     return frame
 
 
-def _section(text: str) -> QLabel:
-    label = QLabel(text)
-    label.setObjectName("Abschnitt")
-    return label
-
-
 class MainWindow(QMainWindow):
-    """WinEventAI als Fenster."""
+    """WinEventAI as a window."""
 
-    UNKNOWN_TAB_TITLE = "Ohne Bewertung"
+    UNKNOWN_TAB_TITLE = "Not assessed"
     UNKNOWN_TAB_INDEX = 2
+    AI_LABEL = "Use language model"
 
     def __init__(self, config: Config | None = None) -> None:
         super().__init__()
@@ -104,40 +98,40 @@ class MainWindow(QMainWindow):
         self._set_idle_state()
         self._start_probe()
 
-    # --- Aufbau --------------------------------------------------------------
+    # --- Layout --------------------------------------------------------------
 
     def _build_menu(self) -> None:
-        datei = self.menuBar().addMenu("&Datei")
+        file_menu = self.menuBar().addMenu("&File")
 
-        self.action_open_run = QAction("Vorhandenen Lauf oeffnen ...", self)
+        self.action_open_run = QAction("Open existing run ...", self)
         self.action_open_run.triggered.connect(self._open_existing_run)
-        datei.addAction(self.action_open_run)
+        file_menu.addAction(self.action_open_run)
 
-        self.action_open_report = QAction("Bericht im Browser oeffnen", self)
+        self.action_open_report = QAction("Open report in browser", self)
         self.action_open_report.triggered.connect(self._open_report)
         self.action_open_report.setEnabled(False)
-        datei.addAction(self.action_open_report)
+        file_menu.addAction(self.action_open_report)
 
-        self.action_open_folder = QAction("Laufverzeichnis oeffnen", self)
+        self.action_open_folder = QAction("Open run directory", self)
         self.action_open_folder.triggered.connect(self._open_run_folder)
         self.action_open_folder.setEnabled(False)
-        datei.addAction(self.action_open_folder)
+        file_menu.addAction(self.action_open_folder)
 
-        datei.addSeparator()
-        beenden = QAction("Beenden", self)
-        beenden.triggered.connect(self.close)
-        datei.addAction(beenden)
+        file_menu.addSeparator()
+        quit_action = QAction("Exit", self)
+        quit_action.triggered.connect(self.close)
+        file_menu.addAction(quit_action)
 
-        einstellungen = self.menuBar().addMenu("&Einstellungen")
-        anlegen = QAction("Konfiguration anlegen", self)
-        anlegen.triggered.connect(self._create_config)
-        einstellungen.addAction(anlegen)
-        oeffnen = QAction("Konfiguration oeffnen", self)
-        oeffnen.triggered.connect(self._open_config)
-        einstellungen.addAction(oeffnen)
-        neu_laden = QAction("Konfiguration neu laden", self)
-        neu_laden.triggered.connect(self._reload_config)
-        einstellungen.addAction(neu_laden)
+        settings_menu = self.menuBar().addMenu("&Settings")
+        create = QAction("Create configuration", self)
+        create.triggered.connect(self._create_config)
+        settings_menu.addAction(create)
+        open_config = QAction("Open configuration", self)
+        open_config.triggered.connect(self._open_config)
+        settings_menu.addAction(open_config)
+        reload_config = QAction("Reload configuration", self)
+        reload_config.triggered.connect(self._reload_config)
+        settings_menu.addAction(reload_config)
 
     def _build_body(self) -> None:
         central = QWidget()
@@ -147,24 +141,24 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(self._build_runbar())
 
-        self.label_headline = QLabel("Noch kein Lauf.")
-        self.label_headline.setObjectName("Kopfzeile")
-        self.label_summary = QLabel("Oben das Zeitfenster waehlen und auf Analyse starten.")
-        self.label_summary.setObjectName("Unterzeile")
+        self.label_headline = QLabel("No run yet.")
+        self.label_headline.setObjectName("Headline")
+        self.label_summary = QLabel("Choose the time window above and click Start analysis.")
+        self.label_summary.setObjectName("Subline")
         layout.addWidget(self.label_headline)
         layout.addWidget(self.label_summary)
 
         self.label_warning = QLabel()
-        self.label_warning.setObjectName("Warnbanner")
+        self.label_warning.setObjectName("WarningBanner")
         self.label_warning.setWordWrap(True)
         self.label_warning.hide()
         layout.addWidget(self.label_warning)
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self._build_findings_tab(), "Befunde")
-        self.tabs.addTab(self._build_coverage_tab(), "Abdeckung")
+        self.tabs.addTab(self._build_findings_tab(), "Findings")
+        self.tabs.addTab(self._build_coverage_tab(), "Coverage")
         self.tabs.addTab(self._build_unknown_tab(), self.UNKNOWN_TAB_TITLE)
-        self.tabs.addTab(self._build_log_tab(), "Protokoll")
+        self.tabs.addTab(self._build_log_tab(), "Log")
         layout.addWidget(self.tabs, stretch=1)
 
         self.setCentralWidget(central)
@@ -181,30 +175,29 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
 
-        layout.addWidget(QLabel("Zeitfenster:"))
+        layout.addWidget(QLabel("Time window:"))
         self.spin_days = QSpinBox()
         self.spin_days.setRange(1, 365)
         self.spin_days.setValue(self.config.collect.days)
-        self.spin_days.setSuffix(" Tage")
+        self.spin_days.setSuffix(" days")
         self.spin_days.setToolTip(
-            "Das Fenster wird nie automatisch verkleinert. Bei sehr grossen Kanaelen "
-            "bricht der Lauf lieber ab, als still unvollstaendig zu werden."
+            "The window is never shrunk automatically. With very large channels the "
+            "run would rather abort than become silently incomplete."
         )
         layout.addWidget(self.spin_days)
 
-        self.check_security = QCheckBox("Sicherheitsmodus")
+        self.check_security = QCheckBox("Security mode")
         self.check_security.setToolTip(
-            "Wertet zusaetzlich 1102, 4625-Serien, 4624 Typ 10, 7045 und weitere aus. "
-            "Braucht Adminrechte. Ergebnisse sind Hinweise, keine forensischen "
-            "Feststellungen."
+            "Additionally evaluates 1102, 4625 series, 4624 type 10, 7045 and more. "
+            "Needs admin rights. Results are indications, not forensic findings."
         )
         layout.addWidget(self.check_security)
 
-        self.check_ai = QCheckBox("Sprachmodell verwenden")
+        self.check_ai = QCheckBox(self.AI_LABEL)
         self.check_ai.setChecked(self.config.ai.enabled)
         self.check_ai.setToolTip(
-            "Der Bericht entsteht auch ohne Modell vollstaendig. Die KI erklaert nur, "
-            "was die Regel-Engine bereits gefunden hat."
+            "The report is complete without a model as well. The AI only explains what "
+            "the rule engine has already found."
         )
         layout.addWidget(self.check_ai)
 
@@ -218,14 +211,14 @@ class MainWindow(QMainWindow):
         self.progress.hide()
         layout.addWidget(self.progress)
 
-        self.button_cancel = QPushButton("Abbrechen")
-        self.button_cancel.setObjectName("Abbruch")
+        self.button_cancel = QPushButton("Cancel")
+        self.button_cancel.setObjectName("Cancel")
         self.button_cancel.clicked.connect(self._cancel_run)
         self.button_cancel.hide()
         layout.addWidget(self.button_cancel)
 
-        self.button_start = QPushButton("Analyse starten")
-        self.button_start.setObjectName("Primaer")
+        self.button_start = QPushButton("Start analysis")
+        self.button_start.setObjectName("Primary")
         self.button_start.clicked.connect(self._start_run)
         layout.addWidget(self.button_start)
 
@@ -244,16 +237,16 @@ class MainWindow(QMainWindow):
         self.table_findings.setAlternatingRowColors(False)
         self.table_findings.setShowGrid(False)
         self.table_findings.setWordWrap(False)
-        # Farbe allein ist eine schlechte einzige Unterscheidung. Der Chip gibt
-        # dem Schweregrad zusaetzlich Flaeche und Rahmen.
+        # Color alone is a poor only distinction. The chip additionally gives the
+        # severity an area and a border.
         self.table_findings.setItemDelegateForColumn(0, SeverityChipDelegate(self))
         header = self.table_findings.horizontalHeader()
         for column in (0, 2, 3):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setStretchLastSection(False)
-        # Ohne das schneidet die Tabelle bei schmalem Splitter Spalten ab, statt
-        # den Befundnamen zu kuerzen - und dann fehlt ausgerechnet die Anzahl.
+        # Without this the table cuts off columns in a narrow splitter instead of
+        # shortening the finding name - and then it is the count that is missing.
         self.table_findings.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.table_findings.setHorizontalScrollMode(
             QTableView.ScrollMode.ScrollPerPixel
@@ -277,13 +270,13 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(6)
 
-        hinweis = QLabel(
-            "„Keine Treffer“ heisst kein Befund. Alles andere heisst, dass an dieser "
-            "Stelle nichts ausgesagt werden kann - unvollstaendige Quellen stehen oben."
+        hint = QLabel(
+            '"No hits" means no finding. Anything else means nothing can be said at this '
+            "point - incomplete sources are at the top."
         )
-        hinweis.setObjectName("Unterzeile")
-        hinweis.setWordWrap(True)
-        layout.addWidget(hinweis)
+        hint.setObjectName("Subline")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
 
         self.coverage_model = CoverageModel()
         self.table_coverage = QTableView()
@@ -298,13 +291,13 @@ class MainWindow(QMainWindow):
         header = self.table_coverage.horizontalHeader()
         for column in range(len(CoverageModel.HEADERS)):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
-        # Quellnamen aus dem Sweep sind sehr lang; ungekappt schoeben sie den
-        # Hinweis aus dem Bild. Volle Laenge steht im Tooltip und ist ziehbar.
+        # Source names from the sweep are very long; uncapped they would push the
+        # note out of view. The full length is in the tooltip and can be dragged.
         header.setSectionResizeMode(CoverageModel.COL_SOURCE, QHeaderView.ResizeMode.Interactive)
         header.resizeSection(CoverageModel.COL_SOURCE, 340)
-        # Der Hinweis bekommt eine feste, grosse Breite: Er ist die Spalte, die
-        # erklaert, warum eine Quelle unvollstaendig ist. Als Dehnspalte bekaeme
-        # er nur den Rest - und der ist neben den Zeitraeumen fast null.
+        # The note gets a fixed, large width: it is the column that explains why
+        # a source is incomplete. As a stretch column it would only get the
+        # rest - and next to the periods that is almost nothing.
         header.setSectionResizeMode(CoverageModel.COL_NOTE, QHeaderView.ResizeMode.Interactive)
         header.resizeSection(CoverageModel.COL_NOTE, 520)
         header.setStretchLastSection(True)
@@ -318,26 +311,26 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(6)
 
-        hinweis = QLabel(
-            "Ereignisse, fuer die es weder eine Regel noch einen gesicherten Eintrag in "
-            "der Wissensbasis gibt - vor allem aus dem Fehler-Sweep. Die Meldung ist der "
-            "Originaltext von Windows. Eine Bewertung findet hier nicht statt; "
-            "'nicht hinterlegt' heisst nicht 'harmlos'."
+        hint = QLabel(
+            "Events for which there is neither a rule nor a verified entry in the "
+            "knowledge base - mostly from the error sweep. The message is the original "
+            "Windows text. No assessment takes place here; 'not on record' does not mean "
+            "'harmless'."
         )
-        hinweis.setObjectName("Unterzeile")
-        hinweis.setWordWrap(True)
-        layout.addWidget(hinweis)
+        hint.setObjectName("Subline")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
 
         filter_row = QHBoxLayout()
-        self.check_unknown_errors = QCheckBox("Nur Kritisch und Fehler")
+        self.check_unknown_errors = QCheckBox("Critical and error only")
         self.check_unknown_errors.setChecked(True)
         filter_row.addWidget(self.check_unknown_errors)
         self.edit_unknown_search = QLineEdit()
-        self.edit_unknown_search.setPlaceholderText("Suchen: Provider, ID, Kanal, Meldung ...")
+        self.edit_unknown_search.setPlaceholderText("Search: provider, id, channel, message ...")
         self.edit_unknown_search.setClearButtonEnabled(True)
         filter_row.addWidget(self.edit_unknown_search, stretch=1)
         self.label_unknown_count = QLabel()
-        self.label_unknown_count.setObjectName("Unterzeile")
+        self.label_unknown_count.setObjectName("Subline")
         filter_row.addWidget(self.label_unknown_count)
         layout.addLayout(filter_row)
 
@@ -366,18 +359,18 @@ class MainWindow(QMainWindow):
     def _filter_unknown(self, *_args: object) -> None:
         self.unknown_filter.set_only_errors(self.check_unknown_errors.isChecked())
         self.unknown_filter.set_text(self.edit_unknown_search.text())
-        sichtbar = self.unknown_filter.rowCount()
-        gesamt = self.unknown_model.rowCount()
-        self.label_unknown_count.setText(f"{sichtbar} von {gesamt} Gruppen")
+        visible = self.unknown_filter.rowCount()
+        total = self.unknown_model.rowCount()
+        self.label_unknown_count.setText(f"{visible} of {total} groups")
 
     def _build_log_tab(self) -> QWidget:
         self.log_view = QPlainTextEdit()
-        self.log_view.setObjectName("Protokoll")
+        self.log_view.setObjectName("Log")
         self.log_view.setReadOnly(True)
         self.log_view.setMaximumBlockCount(5000)
         return self.log_view
 
-    # --- Zustand -------------------------------------------------------------
+    # --- State ---------------------------------------------------------------
 
     def _set_idle_state(self) -> None:
         self.button_start.setEnabled(True)
@@ -399,7 +392,7 @@ class MainWindow(QMainWindow):
     def _append_log(self, line: str) -> None:
         self.log_view.appendPlainText(line)
 
-    # --- Umgebung ------------------------------------------------------------
+    # --- Environment ---------------------------------------------------------
 
     def _start_probe(self) -> None:
         self._probe = ProbeHandle(self.config)
@@ -409,45 +402,46 @@ class MainWindow(QMainWindow):
     def _apply_environment(self, env: Environment) -> None:
         self.environment = env
 
-        # Ampelpunkte statt Warndreiecken: Ein Punkt je Zustand liest sich beim
-        # Ueberfliegen schneller, und die Langfassung steht im Tooltip.
-        teile: list[str] = []
+        # Traffic-light dots instead of warning triangles: one dot per state
+        # reads faster when skimming, and the long version is in the tooltip.
+        parts: list[str] = []
         for text, problem in (env.powershell_line(), env.admin_line(), env.ollama_line()):
-            farbe = theme.ERR if problem else theme.OK
-            teile.append(
-                f'<span style="color:{farbe};">&#9679;</span>&nbsp;{escape(text)}'
+            color = theme.ERR if problem else theme.OK
+            parts.append(
+                f'<span style="color:{color};">&#9679;</span>&nbsp;{escape(text)}'
             )
-        self.status_left.setText("&nbsp;&nbsp;&nbsp;".join(teile))
+        self.status_left.setText("&nbsp;&nbsp;&nbsp;".join(parts))
         self.status_left.setToolTip(env.tooltip())
 
         _, ollama_problem = env.ollama_line()
         if ollama_problem and env.ollama_enabled:
-            # Nicht still abwaehlen - das waere eine Entscheidung ueber den Kopf
-            # des Nutzers. Aber sichtbar machen, dass der Haken nichts bewirkt.
-            self.check_ai.setText("Sprachmodell verwenden (nicht verfuegbar)")
+            # Do not untick silently - that would be a decision over the user's
+            # head. But make visible that the tick has no effect: the report is
+            # built from the rule engine alone.
+            self.check_ai.setText(f"{self.AI_LABEL} (not available - rules only)")
         else:
-            self.check_ai.setText("Sprachmodell verwenden")
+            self.check_ai.setText(self.AI_LABEL)
 
-        rechts = f"{env.rules} Regeln · {env.kb_entries} KB-Eintraege"
+        right = f"{env.rules} rules · {env.kb_entries} KB entries"
         if not env.config_exists:
-            rechts += "  ·  keine eigene Konfiguration"
-        self.status_right.setText(rechts)
+            right += "  ·  no own configuration"
+        self.status_right.setText(right)
 
         if not env.ready_to_collect:
             self.button_start.setEnabled(False)
             self.button_start.setToolTip(
-                "Ohne PowerShell laesst sich nichts erheben. Ein vorhandenes "
-                "Laufverzeichnis kann trotzdem geoeffnet werden (Datei-Menue)."
+                "Nothing can be collected without PowerShell. An existing run "
+                "directory can still be opened (File menu)."
             )
         if env.rules_error:
-            self._append_log(f"Regeln: {env.rules_error}")
+            self._append_log(f"Rules: {env.rules_error}")
         if env.ollama_detail:
             self._append_log(f"Ollama: {env.ollama_detail}")
 
-    # --- Lauf ----------------------------------------------------------------
+    # --- Run -----------------------------------------------------------------
 
     def _effective_config(self) -> Config:
-        """Die Schalter der Startleiste auf die geladene Konfiguration anwenden."""
+        """Applies the switches of the run bar to the loaded configuration."""
         config = self.config.model_copy(deep=True)
         config.collect.days = self.spin_days.value()
         config.rules.security_mode = self.check_security.isChecked()
@@ -464,15 +458,15 @@ class MainWindow(QMainWindow):
 
         config = self._effective_config()
         if existing is None and self.check_security.isChecked() and not self.environment.admin:
-            antwort = QMessageBox.question(
+            answer = QMessageBox.question(
                 self,
-                "Ohne Adminrechte",
-                "Der Sicherheitsmodus braucht Adminrechte. Ohne sie bleibt der "
-                "Security-Kanal gesperrt und erscheint als „keine Rechte“ - "
-                "nicht als „kein Befund“.\n\nTrotzdem starten?",
+                "Without admin rights",
+                "Security mode needs admin rights. Without them the Security channel "
+                'stays locked and appears as "no permission" - not as "no finding".'
+                "\n\nStart anyway?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
-            if antwort != QMessageBox.StandardButton.Yes:
+            if answer != QMessageBox.StandardButton.Yes:
                 return
 
         self._set_busy_state()
@@ -511,9 +505,9 @@ class MainWindow(QMainWindow):
         self.label_headline.setText(report.headline)
         self.label_summary.setText(summary_line(report))
 
-        warnung = coverage_warning(report)
-        if warnung:
-            self.label_warning.setText(warnung)
+        warning = coverage_warning(report)
+        if warning:
+            self.label_warning.setText(warning)
             self.label_warning.show()
         else:
             self.label_warning.hide()
@@ -529,20 +523,20 @@ class MainWindow(QMainWindow):
 
         if report.findings:
             self.table_findings.selectRow(0)
-        if warnung:
-            # Wer nicht vollstaendig erhoben hat, soll das zuerst sehen.
+        if warning:
+            # Whoever did not collect completely should see that first.
             self.tabs.setCurrentIndex(1)
 
         self.action_open_report.setEnabled(True)
         self.action_open_folder.setEnabled(True)
-        self._append_log(f"Bericht: {run.report_dir}")
+        self._append_log(f"Report: {run.report_dir}")
 
-    def _on_failed(self, titel: str, text: str) -> None:
+    def _on_failed(self, title: str, text: str) -> None:
         self._set_idle_state()
         self.button_cancel.setEnabled(True)
-        self.label_summary.setText(f"{titel}: {text.splitlines()[0]}")
-        self._append_log(f"{titel}: {text}")
-        QMessageBox.warning(self, titel, text)
+        self.label_summary.setText(f"{title}: {text.splitlines()[0]}")
+        self._append_log(f"{title}: {text}")
+        QMessageBox.warning(self, title, text)
 
     # --- Detail --------------------------------------------------------------
 
@@ -558,21 +552,21 @@ class MainWindow(QMainWindow):
             detail.finding_detail_html(finding, self._result.report.ai)
         )
 
-    # --- Menuebefehle --------------------------------------------------------
+    # --- Menu commands -------------------------------------------------------
 
     def _open_existing_run(self) -> None:
         start = str(default_runs_root())
-        chosen = QFileDialog.getExistingDirectory(self, "Laufverzeichnis waehlen", start)
+        chosen = QFileDialog.getExistingDirectory(self, "Choose run directory", start)
         if chosen:
             self._start_run(existing=Path(chosen))
 
     def _open_report(self) -> None:
         if self._run is None:
             return
-        target = self._run.report_dir / "bericht.html"
+        target = self._run.report_dir / REPORT_HTML
         if not target.is_file():
             QMessageBox.information(
-                self, "Kein Bericht", f"{target} wurde nicht gefunden."
+                self, "No report", f"{target} was not found."
             )
             return
         webbrowser.open(target.as_uri())
@@ -586,13 +580,13 @@ class MainWindow(QMainWindow):
         try:
             path = write_user_config()
         except FileExistsError as exc:
-            QMessageBox.information(self, "Bereits vorhanden", str(exc))
+            QMessageBox.information(self, "Already present", str(exc))
             return
         QMessageBox.information(
             self,
-            "Angelegt",
-            f"{path}\n\nAlles ist auskommentiert. Wirksam wird nur, was Sie "
-            "einkommentieren - der Elternschluessel muss dabei mit.",
+            "Created",
+            f"{path}\n\nEverything is commented out. Only what you uncomment takes "
+            "effect - the parent key has to come along.",
         )
         self._start_probe()
 
@@ -601,8 +595,8 @@ class MainWindow(QMainWindow):
         if not path.is_file():
             QMessageBox.information(
                 self,
-                "Nicht vorhanden",
-                f"{path} existiert nicht.\n\nEinstellungen › Konfiguration anlegen.",
+                "Not present",
+                f"{path} does not exist.\n\nSettings › Create configuration.",
             )
             return
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
@@ -610,26 +604,26 @@ class MainWindow(QMainWindow):
     def _reload_config(self) -> None:
         try:
             self.config = load_config()
-        except Exception as exc:  # noqa: BLE001 - eine kaputte YAML darf nicht toeten
-            QMessageBox.warning(self, "Konfiguration fehlerhaft", str(exc))
+        except Exception as exc:  # noqa: BLE001 - a broken YAML must not kill the window
+            QMessageBox.warning(self, "Configuration invalid", str(exc))
             return
         self.spin_days.setValue(self.config.collect.days)
         self.check_ai.setChecked(self.config.ai.enabled)
-        self._append_log("Konfiguration neu geladen.")
+        self._append_log("Configuration reloaded.")
         self._start_probe()
 
-    # --- Ende ----------------------------------------------------------------
+    # --- End -----------------------------------------------------------------
 
-    def closeEvent(self, event) -> None:  # noqa: N802, ANN001 - Qt-Signatur
-        """Threads sauber beenden, sonst stuerzt Qt beim Schliessen ab."""
+    def closeEvent(self, event) -> None:  # noqa: N802, ANN001 - Qt signature
+        """End threads cleanly, otherwise Qt crashes on close."""
         if self._worker and self._worker.running:
-            antwort = QMessageBox.question(
+            answer = QMessageBox.question(
                 self,
-                "Lauf laeuft noch",
-                "Es laeuft gerade eine Analyse. Wirklich beenden?",
+                "Run still in progress",
+                "An analysis is currently running. Really exit?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
-            if antwort != QMessageBox.StandardButton.Yes:
+            if answer != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
             self._worker.stop()

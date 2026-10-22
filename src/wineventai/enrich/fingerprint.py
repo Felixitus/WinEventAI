@@ -1,16 +1,15 @@
-"""Fingerprint zur Deduplizierung.
+"""Fingerprint for deduplication.
 
-Abweichung vom urspruenglichen Bauplan, mit Begruendung: Dort war der
-Fingerprint als ``provider + event_id + normalisierte Meldung`` definiert. Auf
-gemischten deutschen und englischen Systemen erzeugt derselbe Vorfall dann zwei
-verschiedene Fingerprints, weil der Meldungstext uebersetzt ist.
+Deviation from the original blueprint, with reason: there the fingerprint was
+defined as ``provider + event_id + normalized message``. On mixed German and
+English systems the same incident then produces two different fingerprints,
+because the message text is translated.
 
-Deshalb hier: ``provider + event_id + event_version + Hash(maskierter
-Property-Vektor)``. Der Property-Vektor ist die sprachneutrale Substanz eines
-Ereignisses; der Meldungstext ist nur seine Uebersetzung. Nur wenn keine
-Properties vorliegen, wird ersatzweise die maskierte Meldung herangezogen - und
-das wird im Fingerprint kenntlich gemacht, damit der Unterschied sichtbar
-bleibt.
+Hence here: ``provider + event_id + event_version + hash(masked property
+vector)``. The property vector is the language-neutral substance of an event;
+the message text is only its translation. Only if there are no properties is
+the masked message used as a substitute - and that is marked in the
+fingerprint so the difference stays visible.
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ from ..normalize.schema import EventRecord
 
 
 def fingerprint_for(record: EventRecord) -> str:
-    """Berechnet den Fingerprint eines Events."""
+    """Computes the fingerprint of an event."""
     if any(value for value in record.properties):
         basis = mask_properties(record.properties)
         kind = "p"
@@ -36,7 +35,7 @@ def fingerprint_for(record: EventRecord) -> str:
 
 
 def describe_fingerprint(fingerprint: str) -> dict[str, str]:
-    """Zerlegt einen Fingerprint wieder in seine lesbaren Bestandteile."""
+    """Splits a fingerprint back into its readable parts."""
     provider, _, rest = fingerprint.partition("|")
     event_id, _, rest = rest.partition("|")
     version, _, digest = rest.partition("|")
@@ -44,6 +43,6 @@ def describe_fingerprint(fingerprint: str) -> dict[str, str]:
         "provider": provider,
         "event_id": event_id,
         "version": version,
-        "basis": "properties" if digest.startswith("p") else "meldungstext",
+        "basis": "properties" if digest.startswith("p") else "message text",
         "digest": digest[1:],
     }

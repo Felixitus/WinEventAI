@@ -83,16 +83,16 @@ tr.row-warn { background: var(--warn-bg); }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 10px;
   border: 1px solid currentColor; white-space: nowrap; }
-.sev-kritisch { color: var(--crit); } .sev-fehler { color: var(--err); }
-.sev-warnung { color: var(--warn); } .sev-info { color: var(--info); }
-.sev-rauschen { color: var(--noise); }
+.sev-critical { color: var(--crit); } .sev-error { color: var(--err); }
+.sev-warning { color: var(--warn); } .sev-info { color: var(--info); }
+.sev-noise { color: var(--noise); }
 
 .finding { background: var(--surface); border: 1px solid var(--rule);
   border-left: 3px solid var(--rule-strong); border-radius: 3px;
   padding: 16px 20px; margin: 0 0 16px; }
-.sev-border-kritisch { border-left-color: var(--crit); }
-.sev-border-fehler { border-left-color: var(--err); }
-.sev-border-warnung { border-left-color: var(--warn); }
+.sev-border-critical { border-left-color: var(--crit); }
+.sev-border-error { border-left-color: var(--err); }
+.sev-border-warning { border-left-color: var(--warn); }
 .sev-border-info { border-left-color: var(--info); }
 .finding-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
 .finding-head h3 { margin: 0; flex: 1 1 auto; }
@@ -113,12 +113,12 @@ dl.kv dd { margin: 0; font-size: 14px; }
 .statement.unverified { opacity: .72; }
 .ev { font-size: 11.5px; color: var(--ink-faint); display: flex; flex-wrap: wrap; gap: 6px; }
 .conf { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
-.conf-hoch { color: var(--ok); } .conf-mittel { color: var(--info); }
-.conf-niedrig { color: var(--warn); } .conf-unklar { color: var(--ink-faint); }
+.conf-high { color: var(--ok); } .conf-medium { color: var(--info); }
+.conf-low { color: var(--warn); } .conf-unclear { color: var(--ink-faint); }
 .rejected { font-size: 12.5px; color: var(--crit); }
-/* Kontext-Sonden. Der Zeitvorbehalt steht in jeder Karte und ist deshalb ein
-   eigenes Element - nicht als Fussnote am Ende des Abschnitts, wo ihn niemand
-   dem einzelnen Messwert zuordnet. */
+/* Context probes. The time caveat is in every card and is therefore an element
+   of its own - not a footnote at the end of the section, where nobody would
+   relate it to the individual measurement. */
 .probes { margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--rule-strong); }
 .probe { border-left: 3px solid var(--rule-strong); padding: 2px 0 2px 12px;
   margin-bottom: 12px; }

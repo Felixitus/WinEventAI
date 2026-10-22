@@ -1,25 +1,25 @@
 <#
-    list_channels.ps1 - prueft, ob konfigurierte Ereigniskanaele existieren.
+    list_channels.ps1 - checks whether configured event channels exist.
 
-    Grundlage fuer 'wineventai doctor'. Ein Filter auf einen nicht existierenden
-    Kanal meldet sonst "keine Befunde" - die schlimmste Fehlerart in diesem
-    Werkzeug. Deshalb wird die Konfiguration gegen das System geprueft, bevor
-    irgendetwas ausgewertet wird.
+    Basis for 'wineventai doctor'. A filter on a non-existent channel would
+    otherwise report "no findings" - the worst kind of error in this tool. The
+    configuration is therefore checked against the system before anything is
+    analyzed.
 
-    Frueher: "Get-WinEvent -ListLog * -ErrorAction Stop". Ohne Adminrechte
-    bricht das beim ersten Kanal ab, dessen Metadaten nicht lesbar sind (auf
-    Windows 11 beobachtet) - danach galten Application, Setup und andere als
-    "FEHLT". Jetzt wird jeder Name einzeln abgefragt und das Ergebnis ueber die
-    sprachneutrale FullyQualifiedErrorId unterschieden:
+    Previously: "Get-WinEvent -ListLog * -ErrorAction Stop". Without admin
+    rights that aborts at the first channel whose metadata is not readable
+    (observed on Windows 11) - afterwards Application, Setup and others counted
+    as "MISSING". Now every name is queried individually and the result is told
+    apart by the language-neutral FullyQualifiedErrorId:
 
-      NoMatchingLogsFound  -> missing     (Kanal gibt es nicht)
-      LogInfoUnavailable   -> unreadable  (Kanal gibt es, Metadaten ohne Rechte nicht lesbar)
+      NoMatchingLogsFound  -> missing     (channel does not exist)
+      LogInfoUnavailable   -> unreadable  (channel exists, metadata not readable without rights)
 
-    Eine Zeile je Name:  {"name": ..., "state": "present|missing|unreadable|error", ...}
+    One line per name:  {"name": ..., "state": "present|missing|unreadable|error", ...}
 #>
 [CmdletBinding()]
 param(
-    # '|'-getrennt, siehe collect/shell.py LIST_SEPARATOR.
+    # '|'-separated, see collect/shell.py LIST_SEPARATOR.
     [Parameter(Mandatory = $true)][string] $Names
 )
 

@@ -1,11 +1,10 @@
-"""Kontext-Sonden.
+"""Context probes.
 
-Eine Sonde ist kein Werkzeug im Werkzeugkasten, sondern der Nachsatz zu einem
-Befund: Sie laeuft nur, wenn ein Befund sie anfordert, sie misst genau das, was
-dieser Befund nahelegt, und sie erscheint in dessen Karte. Ein Menue voller
-Knoepfe - "Ping", "Traceroute", "SMART" - waere leichter zu bauen und deutlich
-weniger wert: Wer selbst weiss, welchen Knopf er druecken muss, braucht dieses
-Werkzeug nicht.
+A probe is not a tool in a toolbox but the postscript to a finding: it only
+runs when a finding requests it, it measures exactly what this finding
+suggests, and it appears in that finding's card. A menu full of buttons -
+"Ping", "Traceroute", "SMART" - would be easier to build and worth much less:
+whoever knows which button to press does not need this tool.
 """
 
 from .base import (

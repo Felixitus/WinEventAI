@@ -1,8 +1,8 @@
-"""Qt-Modelle fuer Abdeckung und Befunde.
+"""Qt models for coverage and findings.
 
-Die Modelle enthalten keine Logik, sie stellen ``ReportModel`` dar. Deshalb sind
-sie auch ohne Fenster testbar - was der Grund ist, warum sie in einer eigenen
-Datei stehen und nicht in den Widgets.
+The models contain no logic, they display ``ReportModel``. That makes them
+testable without a window - which is the reason they live in a file of their
+own and not in the widgets.
 """
 
 from __future__ import annotations
@@ -13,26 +13,27 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyMod
 from PySide6.QtGui import QColor, QFont
 
 from ..collect.base import INCONCLUSIVE
+from ..normalize.schema import LEVEL_LABEL
 from ..report.model import CoverageRow, ReportModel
 from ..rules.engine import Finding
 from . import theme
 
 
 def _fmt_int(value: int) -> str:
-    return f"{value:,}".replace(",", ".")
+    return f"{value:,}"
 
 
 class CoverageModel(QAbstractTableModel):
-    """Die Abdeckungstabelle - im Fenster genauso weit oben wie im Bericht.
+    """The coverage table - in the window as far up as in the report.
 
-    Grund ist derselbe: Wer "keine Befunde" liest, ohne vorher gesehen zu haben,
-    dass eine Quelle gar nicht erhoben wurde, zieht den falschen Schluss.
+    The reason is the same: whoever reads "no findings" without having seen
+    first that a source was not collected at all draws the wrong conclusion.
     """
 
-    # Reihenfolge nach Nutzen beim Ueberfliegen: Der Hinweis steht vor dem
-    # angeforderten Zeitraum, weil Letzterer in jeder Zeile gleich ist und den
-    # Hinweis sonst aus dem sichtbaren Bereich schiebt.
-    HEADERS = ("Quelle", "Status", "Gelesen", "Behalten", "Abgedeckt", "Hinweis", "Angefordert")
+    # Order by usefulness when skimming: the note comes before the requested
+    # period, because the latter is the same in every row and would otherwise
+    # push the note out of the visible area.
+    HEADERS = ("Source", "Status", "Read", "Retained", "Covered", "Note", "Requested")
     COL_SOURCE, COL_STATUS, COL_READ, COL_RETAINED, COL_COVERED, COL_NOTE, COL_REQUESTED = range(7)
 
     def __init__(self, rows: list[CoverageRow] | None = None) -> None:
@@ -72,7 +73,7 @@ class CoverageModel(QAbstractTableModel):
                 str(row.status),
                 _fmt_int(row.records_read),
                 _fmt_int(row.records_retained),
-                row.covered + ("  [Luecke]" if row.coverage_gap else ""),
+                row.covered + ("  [gap]" if row.coverage_gap else ""),
                 coverage_note(row),
                 row.requested,
             )[column]
@@ -99,26 +100,13 @@ class CoverageModel(QAbstractTableModel):
 
 
 def coverage_note(row: CoverageRow) -> str:
-    """Der sichtbare Hinweis je Quelle: zuerst der konkrete Vermerk, sonst der Statustext.
+    """The visible note per source: the concrete note first, otherwise the status text.
 
-    Frueher stand der Vermerk nur im Tooltip. Gerade die wichtigsten Saetze -
-    welche Kanaele der Sweep nicht erreicht hat, warum eine Quelle fehlt -
-    waren damit fuer jeden unsichtbar, der nicht zufaellig mit der Maus
-    darueberfaehrt.
+    The note used to be in the tooltip only. Exactly the most important
+    sentences - which channels the sweep did not reach, why a source is missing
+    - were therefore invisible to everyone who did not happen to hover over it.
     """
     return (row.note or row.hint or "").strip()
-
-
-#: Numerischer Windows-Level -> Anzeige. Bewusst ueber die Zahl, nie ueber
-#: LevelDisplayName - der ist lokalisiert.
-LEVEL_LABEL: dict[int, str] = {
-    0: "immer",
-    1: "kritisch",
-    2: "fehler",
-    3: "warnung",
-    4: "info",
-    5: "ausfuehrlich",
-}
 
 
 def _as_int(value: object, default: int = 0) -> int:
@@ -129,16 +117,16 @@ def _as_int(value: object, default: int = 0) -> int:
 
 
 class UnknownEventsModel(QAbstractTableModel):
-    """Ereignisgruppen ohne gesicherte Bedeutung in der Wissensbasis.
+    """Event groups without a verified meaning in the knowledge base.
 
-    Das ist der Teil, den der Fehler-Sweep zusaetzlich hereinholt: Fehler aus
-    Kanaelen, fuer die es keine Regel gibt. Angezeigt wird die Originalmeldung
-    von Windows - eine Bewertung findet hier ausdruecklich NICHT statt, und die
-    Spalte "Bedeutung" sagt das, statt leer zu bleiben.
+    This is the part the error sweep brings in additionally: errors from
+    channels for which there is no rule. The original Windows message is shown
+    - an assessment explicitly does NOT take place here, and the column
+    "Meaning" says so instead of staying empty.
     """
 
-    HEADERS = ("Stufe", "Anzahl", "Provider", "ID", "Kanal", "Bedeutung", "Meldung (Beispiel)")
-    NO_MEANING = "nicht hinterlegt"
+    HEADERS = ("Level", "Count", "Provider", "ID", "Channel", "Meaning", "Message (sample)")
+    NO_MEANING = "not on record"
 
     def __init__(self, rows: list[dict[str, object]] | None = None) -> None:
         super().__init__()
@@ -146,13 +134,13 @@ class UnknownEventsModel(QAbstractTableModel):
         self.set_rows(rows or [])
 
     def set_rows(self, rows: list[dict[str, object]]) -> None:
-        """Sortiert schwerste Stufe zuerst, innerhalb der Stufe nach Haeufigkeit."""
+        """Sorts the most severe level first, by frequency within a level."""
         self.beginResetModel()
         self._rows = sorted(
             rows,
             key=lambda row: (
                 _as_int(row.get("level"), 9) or 9,
-                -_as_int(row.get("anzahl")),
+                -_as_int(row.get("count")),
             ),
         )
         self.endResetModel()
@@ -183,17 +171,17 @@ class UnknownEventsModel(QAbstractTableModel):
         row = self._rows[index.row()]
         column = index.column()
         level = _as_int(row.get("level"), -1)
-        meldung = " ".join(str(row.get("beispielmeldung") or "").split())
+        message = " ".join(str(row.get("sample_message") or "").split())
 
         if role == Qt.ItemDataRole.DisplayRole:
             return (
-                LEVEL_LABEL.get(level, f"level {level}" if level >= 0 else "unbekannt"),
-                _fmt_int(_as_int(row.get("anzahl"))),
+                LEVEL_LABEL.get(level, f"level {level}" if level >= 0 else "unknown"),
+                _fmt_int(_as_int(row.get("count"))),
                 str(row.get("provider") or ""),
                 str(row.get("event_id") or ""),
-                str(row.get("kanal") or ""),
+                str(row.get("channel") or ""),
                 self.NO_MEANING,
-                meldung or "(keine Meldung)",
+                message or "(no message)",
             )[column]
 
         if role == Qt.ItemDataRole.ForegroundRole:
@@ -204,9 +192,9 @@ class UnknownEventsModel(QAbstractTableModel):
 
         if role == Qt.ItemDataRole.ToolTipRole:
             return (
-                f"{row.get('provider')}:{row.get('event_id')} im Kanal {row.get('kanal')}\n\n"
-                f"{meldung}\n\nFuer dieses Paar gibt es keinen gesicherten Eintrag in der "
-                "Wissensbasis. Die Meldung ist der Originaltext von Windows, keine Bewertung."
+                f"{row.get('provider')}:{row.get('event_id')} in channel {row.get('channel')}\n\n"
+                f"{message}\n\nThere is no verified entry in the knowledge base for this "
+                "pair. The message is the original Windows text, not an assessment."
             )
 
         if role == Qt.ItemDataRole.TextAlignmentRole and column in (1, 3):
@@ -216,10 +204,10 @@ class UnknownEventsModel(QAbstractTableModel):
 
 
 class UnknownEventsFilter(QSortFilterProxyModel):
-    """Filter fuer die Liste: nur Kritisch/Fehler und/oder Volltext.
+    """Filter for the list: critical/error only and/or full text.
 
-    Die Filterung ist reine Darstellung - welche Gruppen ueberhaupt in der
-    Liste stehen, entscheidet die Pipeline.
+    Filtering is pure presentation - which groups are in the list at all is
+    decided by the pipeline.
     """
 
     def __init__(self) -> None:
@@ -249,9 +237,9 @@ class UnknownEventsFilter(QSortFilterProxyModel):
 
 
 class FindingsModel(QAbstractTableModel):
-    """Die Befundliste, sortiert wie im Bericht: Schwere zuerst."""
+    """The list of findings, sorted as in the report: severity first."""
 
-    HEADERS = ("Schwere", "Befund", "Anzahl", "Zuletzt (UTC)")
+    HEADERS = ("Severity", "Finding", "Count", "Last (UTC)")
 
     def __init__(self, findings: list[Finding] | None = None) -> None:
         super().__init__()
@@ -285,14 +273,14 @@ class FindingsModel(QAbstractTableModel):
         column = index.column()
 
         if role == Qt.ItemDataRole.DisplayRole:
-            schwere = str(finding.severity)
+            severity = str(finding.severity)
             if finding.escalated:
-                schwere += " ↑"
+                severity += " ↑"
             return (
-                schwere,
+                severity,
                 finding.rule_name,
                 _fmt_int(finding.group.count),
-                finding.group.last_seen_utc.strftime("%d.%m. %H:%M"),
+                finding.group.last_seen_utc.strftime("%Y-%m-%d %H:%M"),
             )[column]
 
         if role == Qt.ItemDataRole.ForegroundRole and column == 0:
@@ -307,39 +295,39 @@ class FindingsModel(QAbstractTableModel):
             return int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         if role == Qt.ItemDataRole.ToolTipRole:
-            kopf = f"{finding.group.provider}:{finding.group.event_id}"
+            head = f"{finding.group.provider}:{finding.group.event_id}"
             if not finding.has_verified_meaning:
                 return (
-                    f"{kopf}\n\nKeine gesicherte Bedeutung in der Wissensbasis "
-                    f"hinterlegt (Status: {finding.kb_confidence})."
+                    f"{head}\n\nNo verified meaning on record in the knowledge base "
+                    f"(state: {finding.kb_confidence})."
                 )
-            return f"{kopf}\n\n{finding.bedeutung.strip()}"
+            return f"{head}\n\n{finding.meaning.strip()}"
 
         return None
 
 
 def summary_line(report: ReportModel) -> str:
-    """Eine Zeile Kennzahlen unter der Kopfzeile."""
+    """One line of figures below the headline."""
     return (
-        f"{_fmt_int(report.total_events)} Ereignisse · "
-        f"{_fmt_int(report.distinct_groups)} Fingerprints · "
-        f"Reduktion {report.reduction_rate * 100:.1f} % · "
-        f"{len(report.findings)} Befunde, {len(report.noise)} als Rauschen ausgeblendet"
+        f"{_fmt_int(report.total_events)} events · "
+        f"{_fmt_int(report.distinct_groups)} fingerprints · "
+        f"reduction {report.reduction_rate * 100:.1f} % · "
+        f"{len(report.findings)} findings, {len(report.noise)} hidden as noise"
     )
 
 
 def coverage_warning(report: ReportModel) -> str | None:
-    """Der Warnhinweis ueber der Befundliste, oder ``None``."""
-    unvollstaendig = [row for row in report.coverage if row.inconclusive]
-    if not unvollstaendig:
+    """The warning above the list of findings, or ``None``."""
+    incomplete = [row for row in report.coverage if row.inconclusive]
+    if not incomplete:
         return None
-    namen = ", ".join(row.source_id for row in unvollstaendig[:4])
-    if len(unvollstaendig) > 4:
-        namen += f" und {len(unvollstaendig) - 4} weitere"
+    names = ", ".join(row.source_id for row in incomplete[:4])
+    if len(incomplete) > 4:
+        names += f" and {len(incomplete) - 4} more"
     return (
-        f"Der Zeitraum wurde nicht vollstaendig erhoben ({namen}). "
-        "Ueber die nicht abgedeckten Zeitraeume laesst sich nichts aussagen - "
-        "bitte zuerst die Abdeckung lesen."
+        f"The period was not collected completely ({names}). "
+        "Nothing can be said about the uncovered periods - "
+        "please read the coverage first."
     )
 
 

@@ -1,9 +1,9 @@
-"""PowerShell-Erkennung, Aufruf und NDJSON-Verarbeitung.
+"""PowerShell discovery, invocation and NDJSON processing.
 
-Die Trennung in dieser Datei ist die Testgrenze des Collectors: ``read_ndjson``
-kennt nur einen Zeilen-Iterator und weiss nichts von Prozessen. Tests speisen
-Fixture-Dateien ein; im Betrieb kommen die Zeilen aus ``stdout`` von PowerShell.
-Damit ist der gesamte Collector ohne Windows testbar.
+The split in this file is the collector's test boundary: ``read_ndjson`` only
+knows a line iterator and nothing about processes. Tests feed fixture files; in
+production the lines come from PowerShell's ``stdout``. That makes the whole
+collector testable without Windows.
 """
 
 from __future__ import annotations
@@ -24,30 +24,30 @@ from .base import SourceStatus
 
 STATUS_KEY = "__status"
 
-#: Trennzeichen fuer Listen-Argumente an alle mitgelieferten Skripte.
-#: Ueber ``-File`` kommen Argumente als Zeichenketten an. "1001,4624,...," in
-#: einen ``[int[]]``-Parameter zu geben, scheitert unter Windows PowerShell 5.1
-#: mit ParameterArgumentTransformationError (auf Windows 11 beobachtet); ein
-#: ``[string[]]``-Parameter bekommt die ganze Liste als EIN Element. Deshalb
-#: nimmt jedes Skript Listen als eine Zeichenkette und trennt selbst. Der
-#: senkrechte Strich kommt in Kanal-, Rollen- und Dienstnamen nach derzeitigem
-#: Kenntnisstand nicht vor (unbestaetigt fuer Dienst-Anzeigenamen).
+#: Separator for list arguments to every bundled script.
+#: Via ``-File`` arguments arrive as strings. Passing "1001,4624,..." to an
+#: ``[int[]]`` parameter fails under Windows PowerShell 5.1 with
+#: ParameterArgumentTransformationError (observed on Windows 11); a
+#: ``[string[]]`` parameter receives the whole list as ONE element. Every script
+#: therefore takes lists as a single string and splits it itself. To current
+#: knowledge the vertical bar does not occur in channel, role or service names
+#: (unconfirmed for service display names).
 LIST_SEPARATOR = "|"
 
 _ERROR_ID = re.compile(r"FullyQualifiedErrorId\s*:\s*([^\s,]+)")
 
 
 def join_list_arg(values: Iterable[object]) -> str:
-    """Baut ein Listen-Argument fuer ein Skript."""
+    """Builds a list argument for a script."""
     return LIST_SEPARATOR.join(str(value) for value in values)
 
 
 def error_id_from_stderr(stderr: str) -> str | None:
-    """Zieht die FullyQualifiedErrorId aus einer PowerShell-Fehlermeldung.
+    """Extracts the FullyQualifiedErrorId from a PowerShell error message.
 
-    Die Meldung selbst ist lokalisiert, die Bezeichnung
-    ``FullyQualifiedErrorId`` und ihr Wert sind es nicht - auch auf einem
-    deutschen Windows steht dort ``ParameterArgumentTransformationError``.
+    The message itself is localized; the label ``FullyQualifiedErrorId`` and
+    its value are not - even on a German Windows it reads
+    ``ParameterArgumentTransformationError``.
     """
     if not stderr:
         return None
@@ -56,12 +56,12 @@ def error_id_from_stderr(stderr: str) -> str | None:
 
 
 class PowerShellNotFoundError(RuntimeError):
-    """Weder pwsh noch powershell im PATH."""
+    """Neither pwsh nor powershell on PATH."""
 
 
 @dataclass(slots=True)
 class ShellInfo:
-    """Welche PowerShell benutzt wird."""
+    """Which PowerShell is used."""
 
     executable: str
     path: str
@@ -73,25 +73,25 @@ class ShellInfo:
 
 
 def find_powershell(preference: Iterable[str] = ("pwsh", "powershell")) -> ShellInfo:
-    """Sucht eine nutzbare PowerShell.
+    """Finds a usable PowerShell.
 
-    ``pwsh`` wird bevorzugt, ist aber nicht erforderlich: Alle
-    Versionsunterschiede, die uns betreffen wuerden - DateTime-Serialisierung
-    und Ausgabekodierung - sind bereits im Skript neutralisiert. Deshalb ist die
-    Wahl hier eine Zeile und keine Testmatrix.
+    ``pwsh`` is preferred but not required: every version difference that would
+    affect us - DateTime serialization and output encoding - is already
+    neutralized inside the scripts. That is why the choice here is one line and
+    not a test matrix.
     """
     for name in preference:
         found = shutil.which(name)
         if found:
             return ShellInfo(executable=name, path=found)
     raise PowerShellNotFoundError(
-        "Keine PowerShell gefunden. Erwartet wurde 'pwsh' oder 'powershell' im PATH."
+        "No PowerShell found. Expected 'pwsh' or 'powershell' on PATH."
     )
 
 
 @dataclass(slots=True)
 class NdjsonResult:
-    """Was beim Lesen eines NDJSON-Stroms herauskam."""
+    """What came out of reading an NDJSON stream."""
 
     records: list[EventRecord] = field(default_factory=list)
     records_read: int = 0
@@ -101,18 +101,18 @@ class NdjsonResult:
 
     @property
     def completed(self) -> bool:
-        """True, wenn das Skript bis zu seiner Statuszeile gekommen ist.
+        """True if the script got as far as its status line.
 
-        Ohne Statuszeile ist das Skript abgestuerzt oder gar nicht erst
-        gestartet (z.B. Parameterfehler). Null Records bedeuten dann NICHT
-        "keine Treffer" - genau diese Verwechslung liess System, Application
-        und Setup auf einem echten Rechner als leer erscheinen.
+        Without a status line the script crashed or never started (e.g. a
+        parameter error). Zero records then do NOT mean "no hits" - exactly
+        this confusion made System, Application and Setup look empty on a real
+        machine.
         """
         return self.status_line is not None
 
     @property
     def error_id(self) -> str | None:
-        """FullyQualifiedErrorId aus der Statuszeile, sofern das Skript sie schreibt."""
+        """FullyQualifiedErrorId from the status line, if the script writes one."""
         if not self.status_line:
             return None
         value = self.status_line.get("error_id")
@@ -134,11 +134,11 @@ def read_ndjson(
     keep: int | None = None,
     on_record: callable | None = None,
 ) -> NdjsonResult:
-    """Liest einen NDJSON-Strom in Records und die abschliessende Statuszeile.
+    """Reads an NDJSON stream into records plus the closing status line.
 
-    ``keep`` begrenzt nur, wie viele Records *behalten* werden. Gelesen und
-    gezaehlt wird immer alles - das ist der Unterschied zwischen einer
-    Rohdatengrenze und einem stillschweigend verkleinerten Zeitfenster.
+    ``keep`` only limits how many records are *retained*. Everything is always
+    read and counted - that is the difference between a raw-data cap and a
+    silently shrunken time window.
     """
     import json
 
@@ -165,7 +165,7 @@ def read_ndjson(
         except NormalizationError as exc:
             result.parse_errors += 1
             if result.parse_errors <= 3:
-                log.warn("Zeile uebersprungen", quelle=source_ref, grund=str(exc))
+                log.warn("Line skipped", source=source_ref, reason=str(exc))
             continue
 
         result.records_read += 1
@@ -175,13 +175,13 @@ def read_ndjson(
             result.records.append(record)
 
     if result.parse_errors:
-        log.warn("Nicht lesbare Zeilen", quelle=source_ref, anzahl=result.parse_errors)
+        log.warn("Unreadable lines", source=source_ref, count=result.parse_errors)
     return result
 
 
 @dataclass(slots=True)
 class ShellRun:
-    """Rohes Ergebnis eines PowerShell-Aufrufs."""
+    """Raw result of one PowerShell invocation."""
 
     lines: list[str]
     returncode: int
@@ -198,14 +198,14 @@ def run_script(
     timeout_seconds: float,
     folder: str = "collect/scripts",
 ) -> ShellRun:
-    """Startet ein mitgeliefertes .ps1 und sammelt dessen NDJSON-Zeilen.
+    """Starts a bundled .ps1 and collects its NDJSON lines.
 
-    Aufruf ueber ``-File``, nicht ueber ``-EncodedCommand``. Base64-kodierte
-    PowerShell ist eine der auffaelligsten EDR-Signaturen ueberhaupt - fuer ein
-    Werkzeug, das Sicherheitsprotokolle liest, das denkbar schlechteste Bild.
+    Invoked via ``-File``, not ``-EncodedCommand``. Base64-encoded PowerShell is
+    one of the most conspicuous EDR signatures there is - for a tool that reads
+    security logs, the worst possible look.
 
-    Bei Zeitueberschreitung wird der Prozess beendet, aber das bereits Gelesene
-    behalten: ein haengender Kanal darf den Lauf nicht toeten.
+    On timeout the process is killed but whatever was already read is kept: a
+    hanging channel must not kill the run.
     """
     script_path = resource_path(f"{folder}/{script}")
     command = [
@@ -224,7 +224,7 @@ def run_script(
     timed_out = False
     stderr_text = ""
 
-    process = subprocess.Popen(  # noqa: S603 - fester Interpreter, mitgeliefertes Skript
+    process = subprocess.Popen(  # noqa: S603 - fixed interpreter, bundled script
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -243,7 +243,7 @@ def run_script(
             process.kill()
         stderr_text = (process.stderr.read() if process.stderr else "") or ""
         process.wait(timeout=10)
-    except subprocess.TimeoutExpired:  # pragma: no cover - Prozess reagiert nicht
+    except subprocess.TimeoutExpired:  # pragma: no cover - process does not respond
         process.kill()
         timed_out = True
     finally:
@@ -262,13 +262,13 @@ def run_script(
 
 
 def status_from_stderr(stderr: str) -> SourceStatus | None:
-    """Erkennt die wenigen Faelle, die PowerShell vor dem Skriptstart abbricht.
+    """Detects the few cases where PowerShell aborts before the script starts.
 
-    Hier *muss* ausnahmsweise Text betrachtet werden, weil das Skript in diesen
-    Faellen gar nicht erst laeuft und daher keine Statuszeile schreiben kann.
-    Geprueft wird deshalb auf sprachneutrale Bestandteile - Bezeichner wie
-    ``UnauthorizedAccess`` und ``PSSecurityException`` stehen auch auf deutschen
-    Systemen unuebersetzt in der Fehler-ID.
+    Text *has* to be inspected here as an exception, because in these cases the
+    script never runs and therefore cannot write a status line. The check is
+    therefore against language-neutral parts - identifiers such as
+    ``UnauthorizedAccess`` and ``PSSecurityException`` appear untranslated in
+    the error id even on German systems.
     """
     if not stderr:
         return None
@@ -280,21 +280,21 @@ def status_from_stderr(stderr: str) -> SourceStatus | None:
     return None
 
 
-#: Zustaende aus ``list_channels.ps1`` und ihre Anzeige in ``doctor``.
-CHANNEL_STATE_DE: dict[str, str] = {
-    "present": "vorhanden",
-    "missing": "FEHLT",
-    "unreadable": "vorhanden, ohne Adminrechte nicht lesbar",
-    "error": "nicht pruefbar",
+#: States reported by ``list_channels.ps1`` and how ``doctor`` displays them.
+CHANNEL_STATE_LABEL: dict[str, str] = {
+    "present": "present",
+    "missing": "MISSING",
+    "unreadable": "present, not readable without admin rights",
+    "error": "cannot be checked",
 }
 
 
 def channel_states_from_lines(lines: Iterable[str]) -> dict[str, str] | None:
-    """Liest die Ausgabe von ``list_channels.ps1``: Kanalname -> Zustand.
+    """Reads the output of ``list_channels.ps1``: channel name -> state.
 
-    ``None`` heisst "nicht pruefbar" (Skript lief nicht bis zur Statuszeile),
-    nicht "kein Kanal vorhanden". Schluessel sind kleingeschrieben, weil
-    Windows Kanalnamen ohne Ruecksicht auf Gross-/Kleinschreibung behandelt.
+    ``None`` means "cannot be checked" (the script did not reach its status
+    line), not "no channel present". Keys are lower-case because Windows treats
+    channel names case-insensitively.
     """
     import json
 
@@ -316,11 +316,11 @@ def channel_states_from_lines(lines: Iterable[str]) -> dict[str, str] | None:
         name = payload.get("name")
         state = payload.get("state")
         if isinstance(name, str) and isinstance(state, str):
-            states[name.lower()] = state if state in CHANNEL_STATE_DE else "error"
+            states[name.lower()] = state if state in CHANNEL_STATE_LABEL else "error"
     return states if completed else None
 
 
 def iter_file_lines(path: Path) -> Iterator[str]:
-    """Zeilenweiser Leser fuer NDJSON-Dateien im Laufverzeichnis."""
+    """Line reader for NDJSON files in the run directory."""
     with path.open("r", encoding="utf-8", errors="replace") as handle:
         yield from handle

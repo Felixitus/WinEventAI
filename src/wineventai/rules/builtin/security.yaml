@@ -1,184 +1,182 @@
-# Sicherheitsindikatoren. Nur aktiv mit --security.
+# Security indicators. Only active with --security.
 #
-# Alle Ergebnisse dieser Regeln sind ausdruecklich HINWEISE, keine forensischen
-# Feststellungen. Der Bericht kennzeichnet das an jeder Stelle.
+# All results of these rules are explicitly INDICATIONS, not forensic
+# findings. The report marks this everywhere.
 #
-# Genauso wichtig: Fehlt die noetige Ueberwachungsrichtlinie, muss "nicht
-# protokolliert" gemeldet werden und nicht "kein Befund". Das leistet
-# security/audit_policy.py, nicht diese Datei.
+# Just as important: if the required audit policy is missing, "not logged" must
+# be reported, not "no finding". That is done by security/audit_policy.py, not
+# by this file.
 
-- id: sec-protokoll-geloescht
-  name: Sicherheitsprotokoll geloescht (1102)
+- id: sec-log-cleared
+  name: Security log cleared (1102)
   match:
     channel: Security
     provider: Microsoft-Windows-Eventlog
     event_id: 1102
-  severity: kritisch
+  severity: critical
   security_indicator: true
-  bedeutung: >
-    Das Sicherheitsprotokoll wurde geleert. Das ist im Normalbetrieb ein
-    seltener, bewusster Vorgang und immer erklaerungsbeduerftig.
-  typische_ursachen:
-    - Verschleierung von Spuren
-    - Bewusste Bereinigung durch Administratoren
-    - Automatismus einer Verwaltungssoftware
-  empfohlene_checks:
-    - Ausfuehrendes Konto und Zeitpunkt festhalten.
-    - Gab es zeitnah Anmeldungen von aussen (4624 Logon Type 10)?
-    - Vorhandene Sicherungen der Protokolle pruefen.
+  meaning: >
+    The security log was cleared. In normal operation that is a rare,
+    deliberate act and always needs an explanation.
+  typical_causes:
+    - Covering tracks
+    - Deliberate cleanup by administrators
+    - Automation of a management tool
+  recommended_checks:
+    - Record the executing account and the time.
+    - Were there logons from outside close in time (4624 logon type 10)?
+    - Check existing backups of the logs.
 
-- id: sec-protokoll-geloescht-104
-  name: Protokoll geloescht (104)
+- id: sec-log-cleared-104
+  name: Log cleared (104)
   match:
     channel: System
     provider: Microsoft-Windows-Eventlog
     event_id: 104
-  severity: fehler
+  severity: error
   security_indicator: true
-  bedeutung: >
-    Ein Ereignisprotokoll wurde geleert. Anders als 1102 betrifft das auch
-    andere Kanaele als Security.
-  typische_ursachen:
-    - Bereinigung durch Administratoren oder Verwaltungssoftware
-    - Verschleierung
-  empfohlene_checks:
-    - Betroffenen Kanal und ausfuehrendes Konto festhalten.
-    - Mit den Luecken in der Zeitachse abgleichen.
+  meaning: >
+    An event log was cleared. Unlike 1102 this also covers channels other than
+    Security.
+  typical_causes:
+    - Cleanup by administrators or management software
+    - Covering tracks
+  recommended_checks:
+    - Record the affected channel and the executing account.
+    - Match it against the gaps in the timeline.
 
-- id: sec-audit-policy-geaendert
-  name: Ueberwachungsrichtlinie geaendert (4719)
+- id: sec-audit-policy-changed
+  name: Audit policy changed (4719)
   match:
     channel: Security
     provider: Microsoft-Windows-Security-Auditing
     event_id: 4719
-  severity: fehler
+  severity: error
   security_indicator: true
-  bedeutung: >
-    Die Systemueberwachungsrichtlinie wurde geaendert. Wird eine Kategorie
-    abgeschaltet, entstehen ab diesem Zeitpunkt keine Ereignisse mehr - das ist
-    keine Unauffaelligkeit, sondern eine Luecke.
-  typische_ursachen:
-    - Aenderung per Gruppenrichtlinie
-    - Bewusste Abschaltung der Protokollierung
-  empfohlene_checks:
-    - Welche Unterkategorie wurde geaendert, und in welche Richtung?
-    - Ab wann fehlen dadurch welche Ereignisse?
+  meaning: >
+    The system audit policy was changed. If a category is switched off, no
+    events are produced from that point on - that is not inconspicuousness but
+    a gap.
+  typical_causes:
+    - Change via group policy
+    - Deliberate disabling of logging
+  recommended_checks:
+    - Which subcategory was changed, and in which direction?
+    - From when on are which events missing because of it?
 
-- id: sec-anmeldefehler-serie
-  name: Anmeldefehler in Serie (4625)
+- id: sec-logon-failure-series
+  name: Logon failures in series (4625)
   match:
     channel: Security
     provider: Microsoft-Windows-Security-Auditing
     event_id: 4625
-  severity: warnung
+  severity: warning
   security_indicator: true
-  bedeutung: >
-    Mehrfach fehlgeschlagene Anmeldungen. Einzelne Fehlversuche sind Alltag;
-    eine dichte Serie ist ein Hinweis auf systematisches Ausprobieren.
-  typische_ursachen:
-    - Vergessenes Passwort, abgelaufene Anmeldedaten
-    - Dienst mit veralteten Zugangsdaten
-    - Systematisches Durchprobieren von Kennwoertern
-  empfohlene_checks:
-    - Ein Konto oder viele? Eine Quelle oder viele?
-    - Folgte auf die Serie eine erfolgreiche Anmeldung (4624)?
-    - Herkunft der Anmeldeversuche bestimmen.
+  meaning: >
+    Repeatedly failed logons. Single failed attempts are everyday life; a dense
+    series is an indication of systematic guessing.
+  typical_causes:
+    - Forgotten password, expired credentials
+    - Service with outdated credentials
+    - Systematic password guessing
+  recommended_checks:
+    - One account or many? One source or many?
+    - Was the series followed by a successful logon (4624)?
+    - Determine the origin of the logon attempts.
   threshold:
     count_min: 10
     burst_required: true
     escalate_above: 100
-    escalate_to: fehler
+    escalate_to: error
 
-- id: sec-remote-anmeldung
-  name: Anmeldung ueber Remotedesktop (4624 Logon Type 10)
+- id: sec-remote-logon
+  name: Logon via Remote Desktop (4624 logon type 10)
   match:
     channel: Security
     provider: Microsoft-Windows-Security-Auditing
     event_id: 4624
     data:
       LogonType: "^10$"
-  severity: warnung
+  severity: warning
   security_indicator: true
-  bedeutung: >
-    Erfolgreiche interaktive Anmeldung ueber das Netz (Remotedesktop). Fuer sich
-    genommen voellig normal - im Zusammenhang mit anderen Indikatoren nicht.
-  typische_ursachen:
-    - Regulaere Fernwartung
-    - Zugriff von aussen mit erbeuteten Zugangsdaten
-  empfohlene_checks:
-    - Konto, Uhrzeit und Quelladresse gegen den erwarteten Betrieb pruefen.
-    - Ist die Anmeldung ausserhalb der ueblichen Arbeitszeit erfolgt?
+  meaning: >
+    Successful interactive logon over the network (Remote Desktop). Completely
+    normal on its own - not in combination with other indicators.
+  typical_causes:
+    - Regular remote maintenance
+    - Access from outside with stolen credentials
+  recommended_checks:
+    - Check account, time and source address against expected operation.
+    - Did the logon happen outside the usual working hours?
 
-- id: sec-konto-und-gruppe
-  name: Konto angelegt oder Gruppe erweitert (4720/4728/4732)
+- id: sec-account-and-group
+  name: Account created or group extended (4720/4728/4732)
   match:
     channel: Security
     provider: Microsoft-Windows-Security-Auditing
     event_id: [4720, 4728, 4732]
-  severity: fehler
+  severity: error
   security_indicator: true
-  bedeutung: >
-    Ein Benutzerkonto wurde angelegt oder einer Gruppe hinzugefuegt. Bei
-    privilegierten Gruppen ist das der klassische Schritt zur Verstetigung eines
-    Zugriffs.
-  typische_ursachen:
-    - Regulaere Benutzerverwaltung
-    - Anlage eines Kontos zur dauerhaften Nutzung durch Dritte
-  empfohlene_checks:
-    - Wurde das Konto von der zustaendigen Stelle angelegt?
-    - Um welche Gruppe geht es - administrativ oder nicht?
+  meaning: >
+    A user account was created or added to a group. For privileged groups this
+    is the classic step to make access permanent.
+  typical_causes:
+    - Regular user administration
+    - Creation of an account for permanent use by third parties
+  recommended_checks:
+    - Was the account created by the responsible party?
+    - Which group is it - administrative or not?
 
-- id: sec-neuer-dienst
-  name: Neuer Dienst eingerichtet (7045/4697)
+- id: sec-new-service
+  name: New service installed (7045/4697)
   match:
     provider: [Service Control Manager, Microsoft-Windows-Security-Auditing]
     event_id: [7045, 4697]
-  severity: fehler
+  severity: error
   security_indicator: true
-  bedeutung: >
-    Ein neuer Dienst wurde auf dem System eingerichtet. Dienste starten
-    automatisch mit hohen Rechten und sind deshalb ein bevorzugter Weg, sich
-    dauerhaft einzurichten.
-  typische_ursachen:
-    - Softwareinstallation
-    - Verwaltungs- oder Fernwartungswerkzeug
-    - Dauerhafte Einrichtung durch einen Angreifer
-  empfohlene_checks:
-    - Dienstname und Programmpfad pruefen - liegt er an einem ungewoehnlichen Ort?
-    - Passt die Installation zu einem bekannten Vorgang?
+  meaning: >
+    A new service was installed on the system. Services start automatically
+    with high privileges and are therefore a preferred way to persist.
+  typical_causes:
+    - Software installation
+    - Management or remote maintenance tool
+    - Persistence set up by an attacker
+  recommended_checks:
+    - Check service name and program path - is it in an unusual place?
+    - Does the installation match a known activity?
 
 - id: sec-powershell-scriptblock
-  name: PowerShell Script Block (4104/4103)
+  name: PowerShell script block (4104/4103)
   match:
     provider: Microsoft-Windows-PowerShell
     event_id: [4104, 4103]
-  severity: warnung
+  severity: warning
   security_indicator: true
-  bedeutung: >
-    PowerShell hat ausgefuehrten Skriptcode protokolliert. Ohne aktiviertes
-    Script Block Logging entstehen diese Ereignisse nur fuer als verdaechtig
-    eingestufte Bloecke - das Fehlen ist also kein Beleg fuer Unauffaelligkeit.
-  typische_ursachen:
-    - Regulaere Administrationsskripte
-    - Verwaltungssoftware
-    - Ausfuehrung fremden Codes
-  empfohlene_checks:
-    - Ist Script Block Logging ueberhaupt aktiv? Sonst ist die Sicht unvollstaendig.
-    - Kodierte Befehle oder Herunterladen von Inhalten im Skriptblock?
+  meaning: >
+    PowerShell logged executed script code. Without script block logging
+    enabled, these events are only produced for blocks rated as suspicious - so
+    their absence is no proof of inconspicuousness.
+  typical_causes:
+    - Regular administration scripts
+    - Management software
+    - Execution of foreign code
+  recommended_checks:
+    - Is script block logging active at all? Otherwise the view is incomplete.
+    - Encoded commands or downloading of content in the script block?
 
-- id: sec-prozesserstellung
-  name: Prozesserstellung mit Kommandozeile (4688)
+- id: sec-process-creation
+  name: Process creation with command line (4688)
   match:
     channel: Security
     provider: Microsoft-Windows-Security-Auditing
     event_id: 4688
   severity: info
   security_indicator: true
-  bedeutung: >
-    Ein Prozess wurde gestartet. Nur mit aktivierter Kommandozeilenprotokollierung
-    steht auch der Aufruf selbst darin - ohne sie ist der Wert gering.
-  typische_ursachen:
-    - Normaler Betrieb
-  empfohlene_checks:
-    - Ist die Kommandozeilenprotokollierung aktiv?
-    - "Auffaellige Aufrufe: kodierte Befehle, Ausfuehrung aus temporaeren Pfaden."
+  meaning: >
+    A process was started. Only with command-line logging enabled does the call
+    itself appear in it - without it the value is low.
+  typical_causes:
+    - Normal operation
+  recommended_checks:
+    - Is command-line logging active?
+    - "Conspicuous calls: encoded commands, execution from temporary paths."

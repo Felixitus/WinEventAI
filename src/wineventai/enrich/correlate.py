@@ -1,9 +1,8 @@
-"""Zeitfenster-Korrelation um Marker-Events.
+"""Time-window correlation around marker events.
 
-Weil der Strom absteigend laeuft, wird "alle Events fuenf Minuten VOR dem
-Absturz" zu einer Vorwaerts-Pufferung: Die gesuchten Events kommen NACH dem
-Marker an. Ein offenes Fenster je Marker reicht, kein Rueckblick ueber die
-gesamte Historie.
+Because the stream runs descending, "all events five minutes BEFORE the crash"
+becomes forward buffering: the events we look for arrive AFTER the marker. One
+open window per marker suffices; no look back over the whole history.
 """
 
 from __future__ import annotations
@@ -14,7 +13,7 @@ from pydantic import BaseModel, ConfigDict
 
 from ..normalize.schema import EventRecord
 
-#: Ereignisse, um die herum Kontext eingesammelt wird.
+#: Events around which context is collected.
 MARKER_KEYS: frozenset[tuple[str, int]] = frozenset(
     {
         ("Microsoft-Windows-Kernel-Power", 41),
@@ -27,7 +26,7 @@ MARKER_KEYS: frozenset[tuple[str, int]] = frozenset(
 
 
 class ContextWindow(BaseModel):
-    """Die Ereignisse rund um einen Marker."""
+    """The events around one marker."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -42,7 +41,7 @@ class ContextWindow(BaseModel):
 
 
 class ContextCollector:
-    """Sammelt Kontext um Marker waehrend des absteigenden Durchlaufs."""
+    """Collects context around markers during the descending pass."""
 
     def __init__(self, *, window_minutes: int, max_events: int) -> None:
         self.window = timedelta(minutes=window_minutes)
@@ -53,11 +52,11 @@ class ContextCollector:
     def is_marker(self, record: EventRecord) -> bool:
         if (record.provider, record.event_id) in MARKER_KEYS:
             return True
-        # Ein Speicherabbild ist ebenfalls ein Ankerpunkt.
+        # A memory dump is an anchor point as well.
         return record.channel == "Minidump"
 
     def observe(self, record: EventRecord) -> bool:
-        """Verarbeitet einen Record. Liefert True, wenn er Kontext eines Markers ist."""
+        """Processes a record. Returns True if it is context of a marker."""
         self._close_expired(record.timestamp_utc)
 
         is_context = False

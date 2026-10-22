@@ -1,12 +1,12 @@
-"""Lokale Wissensbasis als SQLite mit FTS5.
+"""Local knowledge base as SQLite with FTS5.
 
-Der Schluessel ist ``(provider, event_id)`` - niemals ``event_id`` allein.
-Event-IDs sind nur je Provider eindeutig; 1000 existiert dutzendfach. Eine
-Tabelle mit ``event_id`` als Primaerschluessel waere der erste Bug.
+The key is ``(provider, event_id)`` - never ``event_id`` alone. Event ids are
+only unique per provider; 1000 exists dozens of times. A table with
+``event_id`` as primary key would be the first bug.
 
-``confidence`` hat eine Konsequenz im Code, nicht nur im Text: Ein Eintrag ohne
-gesicherte Bedeutung wird NICHT in den Prompt eingebettet, und der Befund
-erscheint im Bericht mit dem Vermerk "keine gesicherte Bedeutung hinterlegt".
+``confidence`` has a consequence in the code, not only in the text: an entry
+without a verified meaning is NOT embedded in the prompt, and the finding
+appears in the report with the note "no verified meaning on record".
 """
 
 from __future__ import annotations
@@ -16,10 +16,12 @@ import sqlite3
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ..applog import get_log
 from ..resources import program_data_dir, resource_path
 
 SEED_RESOURCE = "kb/seed.yaml"
@@ -29,45 +31,81 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS kb_entry (
     provider        TEXT NOT NULL,
     event_id        INTEGER NOT NULL,
-    bedeutung       TEXT NOT NULL DEFAULT '',
-    typische_ursachen TEXT NOT NULL DEFAULT '[]',
+    meaning         TEXT NOT NULL DEFAULT '',
+    typical_causes  TEXT NOT NULL DEFAULT '[]',
     checks          TEXT NOT NULL DEFAULT '[]',
     severity_default TEXT,
-    quelle_url      TEXT,
-    confidence      TEXT NOT NULL DEFAULT 'leer',
-    geprueft_am     TEXT,
-    geprueft_von    TEXT,
+    source_url      TEXT,
+    confidence      TEXT NOT NULL DEFAULT 'empty',
+    checked_on      TEXT,
+    checked_by      TEXT,
     PRIMARY KEY (provider, event_id)
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS kb_fts USING fts5(
-    provider, event_id UNINDEXED, bedeutung, typische_ursachen, checks,
+    provider, event_id UNINDEXED, meaning, typical_causes, checks,
     content='kb_entry', content_rowid='rowid'
 );
 """
 
+#: Column names of databases created before version 2.0.
+_LEGACY_COLUMNS: dict[str, str] = {
+    "bedeutung": "meaning",
+    "typische_ursachen": "typical_causes",
+    "quelle_url": "source_url",
+    "geprueft_am": "checked_on",
+    "geprueft_von": "checked_by",
+}
+
+#: Confidence values of databases and seed files created before version 2.0.
+_LEGACY_CONFIDENCE: dict[str, str] = {
+    "sicher": "verified",
+    "unsicher": "unverified",
+    "leer": "empty",
+}
+
 
 class KbConfidence(StrEnum):
-    SICHER = "sicher"
-    UNSICHER = "unsicher"
-    LEER = "leer"
+    VERIFIED = "verified"
+    UNVERIFIED = "unverified"
+    EMPTY = "empty"
+
+    @classmethod
+    def _missing_(cls, value: object) -> KbConfidence | None:
+        if isinstance(value, str):
+            current = _LEGACY_CONFIDENCE.get(value.strip().lower())
+            if current is not None:
+                return cls(current)
+        return None
 
 
 class KbEntry(BaseModel):
-    """Ein Eintrag der Wissensbasis."""
+    """One entry of the knowledge base."""
 
     model_config = ConfigDict(extra="forbid")
 
     provider: str
     event_id: int
-    bedeutung: str = ""
-    typische_ursachen: list[str] = Field(default_factory=list)
+    meaning: str = ""
+    typical_causes: list[str] = Field(default_factory=list)
     checks: list[str] = Field(default_factory=list)
     severity_default: str | None = None
-    quelle_url: str | None = None
-    confidence: KbConfidence = KbConfidence.LEER
-    geprueft_am: str | None = None
-    geprueft_von: str | None = None
+    source_url: str | None = None
+    confidence: KbConfidence = KbConfidence.EMPTY
+    checked_on: str | None = None
+    checked_by: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_field_names(cls, data: Any) -> Any:
+        """Accepts the German field names of seed files written before 2.0."""
+        if not isinstance(data, dict):
+            return data
+        renamed = dict(data)
+        for old, new in _LEGACY_COLUMNS.items():
+            if old in renamed and new not in renamed:
+                renamed[new] = renamed.pop(old)
+        return renamed
 
     @property
     def key(self) -> str:
@@ -75,26 +113,54 @@ class KbEntry(BaseModel):
 
     @property
     def usable_in_prompt(self) -> bool:
-        """Nur gesicherte Eintraege gehen in den Prompt.
+        """Only verified entries go into the prompt.
 
-        Ein unsicherer Eintrag im Kontext waere schlimmer als gar keiner: Das
-        Modell wuerde ihn als Tatsache behandeln.
+        An unverified entry in the context would be worse than none at all: the
+        model would treat it as fact.
         """
-        return self.confidence is KbConfidence.SICHER and bool(self.bedeutung.strip())
+        return self.confidence is KbConfidence.VERIFIED and bool(self.meaning.strip())
 
 
 class KnowledgeBase:
-    """Zugriff auf die Wissensbasis."""
+    """Access to the knowledge base."""
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self.path)
         self._conn.row_factory = sqlite3.Row
+        migrated = self._migrate_legacy_schema()
         self._conn.executescript(SCHEMA)
         self._conn.commit()
+        if migrated:
+            # The bundled entries were German before 2.0. Reloading the seed
+            # replaces exactly those keys; entries a user added stay as they are.
+            self._rebuild_fts()
+            self.load_seed()
+            get_log().info("Knowledge base migrated to the 2.0 schema", path=str(self.path))
 
-    # --- Verwaltung ----------------------------------------------------------
+    def _migrate_legacy_schema(self) -> bool:
+        """Renames the German columns of a pre-2.0 database in place.
+
+        Returns True if a migration took place. Renaming instead of recreating
+        keeps entries the user added by hand.
+        """
+        columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(kb_entry)")}
+        if "bedeutung" not in columns:
+            return False
+        # The FTS table references the old column names; it is rebuilt below.
+        self._conn.execute("DROP TABLE IF EXISTS kb_fts")
+        for old, new in _LEGACY_COLUMNS.items():
+            if old in columns:
+                self._conn.execute(f"ALTER TABLE kb_entry RENAME COLUMN {old} TO {new}")
+        for old, new in _LEGACY_CONFIDENCE.items():
+            self._conn.execute(
+                "UPDATE kb_entry SET confidence = ? WHERE confidence = ?", (new, old)
+            )
+        self._conn.commit()
+        return True
+
+    # --- Management ----------------------------------------------------------
 
     @classmethod
     def default_path(cls) -> Path:
@@ -102,12 +168,12 @@ class KnowledgeBase:
 
     @classmethod
     def open_default(cls, *, seed_if_empty: bool = True) -> KnowledgeBase:
-        """Oeffnet die Wissensbasis und legt sie beim ersten Start an.
+        """Opens the knowledge base and creates it on first start.
 
-        Die Datenbank wird nach %PROGRAMDATA% materialisiert und nicht im
-        Paketverzeichnis gehalten: Eine SQLite-Datei in ``sys._MEIPASS`` ist
-        schreibgeschuetzt, und genau daran scheitern solche Werkzeuge sonst beim
-        ersten Pflegeversuch.
+        The database is materialized in %PROGRAMDATA% and not kept in the
+        package directory: a SQLite file in ``sys._MEIPASS`` is read-only, and
+        that is exactly where such tools otherwise fail at the first attempt to
+        maintain it.
         """
         kb = cls(cls.default_path())
         if seed_if_empty and kb.count() == 0:
@@ -123,36 +189,36 @@ class KnowledgeBase:
     def __exit__(self, *exc: object) -> None:
         self.close()
 
-    # --- Schreiben -----------------------------------------------------------
+    # --- Writing -------------------------------------------------------------
 
     def upsert(self, entry: KbEntry) -> None:
         self._conn.execute(
             """
-            INSERT INTO kb_entry (provider, event_id, bedeutung, typische_ursachen, checks,
-                                  severity_default, quelle_url, confidence, geprueft_am,
-                                  geprueft_von)
+            INSERT INTO kb_entry (provider, event_id, meaning, typical_causes, checks,
+                                  severity_default, source_url, confidence, checked_on,
+                                  checked_by)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(provider, event_id) DO UPDATE SET
-                bedeutung = excluded.bedeutung,
-                typische_ursachen = excluded.typische_ursachen,
+                meaning = excluded.meaning,
+                typical_causes = excluded.typical_causes,
                 checks = excluded.checks,
                 severity_default = excluded.severity_default,
-                quelle_url = excluded.quelle_url,
+                source_url = excluded.source_url,
                 confidence = excluded.confidence,
-                geprueft_am = excluded.geprueft_am,
-                geprueft_von = excluded.geprueft_von
+                checked_on = excluded.checked_on,
+                checked_by = excluded.checked_by
             """,
             (
                 entry.provider,
                 entry.event_id,
-                entry.bedeutung,
-                json.dumps(entry.typische_ursachen, ensure_ascii=False),
+                entry.meaning,
+                json.dumps(entry.typical_causes, ensure_ascii=False),
                 json.dumps(entry.checks, ensure_ascii=False),
                 entry.severity_default,
-                entry.quelle_url,
+                entry.source_url,
                 str(entry.confidence),
-                entry.geprueft_am,
-                entry.geprueft_von,
+                entry.checked_on,
+                entry.checked_by,
             ),
         )
         self._rebuild_fts()
@@ -162,7 +228,7 @@ class KnowledgeBase:
         self._conn.execute("INSERT INTO kb_fts(kb_fts) VALUES('rebuild')")
 
     def load_seed(self, path: Path | None = None) -> int:
-        """Laedt die mitgelieferten geprueften Eintraege."""
+        """Loads the bundled verified entries."""
         source = path or resource_path(SEED_RESOURCE)
         payload = yaml.safe_load(source.read_text(encoding="utf-8")) or []
         count = 0
@@ -171,7 +237,7 @@ class KnowledgeBase:
             count += 1
         return count
 
-    # --- Lesen ---------------------------------------------------------------
+    # --- Reading -------------------------------------------------------------
 
     def count(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) AS n FROM kb_entry").fetchone()
@@ -182,14 +248,14 @@ class KnowledgeBase:
         return KbEntry(
             provider=row["provider"],
             event_id=row["event_id"],
-            bedeutung=row["bedeutung"],
-            typische_ursachen=json.loads(row["typische_ursachen"]),
+            meaning=row["meaning"],
+            typical_causes=json.loads(row["typical_causes"]),
             checks=json.loads(row["checks"]),
             severity_default=row["severity_default"],
-            quelle_url=row["quelle_url"],
+            source_url=row["source_url"],
             confidence=KbConfidence(row["confidence"]),
-            geprueft_am=row["geprueft_am"],
-            geprueft_von=row["geprueft_von"],
+            checked_on=row["checked_on"],
+            checked_by=row["checked_by"],
         )
 
     def get(self, provider: str, event_id: int) -> KbEntry | None:
@@ -206,11 +272,11 @@ class KnowledgeBase:
         return [self._row_to_entry(row) for row in rows]
 
     def search(self, query: str, limit: int = 5) -> list[KbEntry]:
-        """Volltextsuche ueber FTS5.
+        """Full-text search via FTS5.
 
-        Kein Vektorindex - fuer zwanzig bis wenige hundert Eintraege waere das
-        ueberzogen, und ein zusaetzliches Modell fuer Einbettungen widerspraeche
-        dem Offline-Gedanken.
+        No vector index - for twenty to a few hundred entries that would be
+        overkill, and an additional model for embeddings would contradict the
+        offline principle.
         """
         cleaned = " ".join(part for part in query.replace('"', " ").split() if part)
         if not cleaned:
@@ -231,7 +297,7 @@ class KnowledgeBase:
 
     def mark_checked(self, provider: str, event_id: int, by: str) -> None:
         self._conn.execute(
-            "UPDATE kb_entry SET geprueft_am = ?, geprueft_von = ? "
+            "UPDATE kb_entry SET checked_on = ?, checked_by = ? "
             "WHERE provider = ? AND event_id = ?",
             (date.today().isoformat(), by, provider, event_id),
         )

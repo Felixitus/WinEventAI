@@ -1,0 +1,20 @@
+{
+  "summary": "The machine shows signs of a memory fault.",
+  "hypotheses": [
+    {
+      "statement": "The simultaneous occurrence of event ID 4321 points to a memory defect.",
+      "evidence": [
+        {"provider": "Microsoft-Windows-Kernel-Power", "event_id": 41, "timestamp_utc": "2026-09-08T09:00:00+00:00"}
+      ],
+      "confidence": "high"
+    },
+    {
+      "statement": "The service on HOST_9 was stopped by USER_7.",
+      "evidence": [
+        {"provider": "Invented-Provider", "event_id": 9999, "timestamp_utc": "2026-09-08T09:00:00+00:00"}
+      ],
+      "confidence": "high"
+    }
+  ],
+  "recommended_steps": []
+}

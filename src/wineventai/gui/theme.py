@@ -1,13 +1,13 @@
-"""Farben, Schriften und Stylesheet der Oberflaeche.
+"""Colors, fonts and stylesheet of the user interface.
 
-Dieselbe Palette wie der HTML-Bericht. Wer beides nebeneinander sieht - und das
-ist der Normalfall, weil der Bericht aus der Oberflaeche heraus geoeffnet wird -
-soll nicht zwei verschiedene Werkzeuge zu sehen glauben.
+The same palette as the HTML report. Whoever sees both side by side - and that
+is the normal case, because the report is opened from the interface - should
+not believe they are looking at two different tools.
 
-Die Schweregrad-Farben sind bewusst NICHT die Akzentfarbe: Rot, Orange und Gelb
-tragen hier Bedeutung, und eine Oberflaeche, die dieselben Toene auch zur
-Verzierung benutzt, macht diese Bedeutung wertlos. Deshalb ist der Akzent ein
-Pflaumenton, der in keiner Ampel vorkommt.
+The severity colors are deliberately NOT the accent color: red, orange and
+yellow carry meaning here, and an interface that uses the same tones for
+decoration makes that meaning worthless. The accent is therefore a plum tone
+that appears in no traffic light.
 """
 
 from __future__ import annotations
@@ -41,20 +41,20 @@ CRIT_BG = "#fbeceb"
 OK_BG = "#eaf3ee"
 
 SEVERITY_COLOR: dict[Severity, str] = {
-    Severity.KRITISCH: CRIT,
-    Severity.FEHLER: ERR,
-    Severity.WARNUNG: WARN,
+    Severity.CRITICAL: CRIT,
+    Severity.ERROR: ERR,
+    Severity.WARNING: WARN,
     Severity.INFO: INFO,
-    Severity.RAUSCHEN: NOISE,
+    Severity.NOISE: NOISE,
 }
 
-#: Hintergrund der Schweregrad-Chips. Sehr blass, damit die Zeile lesbar bleibt.
+#: Background of the severity chips. Very pale so the row stays readable.
 SEVERITY_BG: dict[Severity, str] = {
-    Severity.KRITISCH: "#fbeceb",
-    Severity.FEHLER: "#fbf1e8",
-    Severity.WARNUNG: "#fbf6e4",
+    Severity.CRITICAL: "#fbeceb",
+    Severity.ERROR: "#fbf1e8",
+    Severity.WARNING: "#fbf6e4",
     Severity.INFO: "#eef2f9",
-    Severity.RAUSCHEN: "#f0eff2",
+    Severity.NOISE: "#f0eff2",
 }
 
 
@@ -76,21 +76,21 @@ QMainWindow, QWidget {{
     font-size: 13px;
 }}
 
-/* --- Kopfzeilen --------------------------------------------------------- */
-QLabel#Kopfzeile {{
+/* --- Headlines ---------------------------------------------------------- */
+QLabel#Headline {{
     font-size: 20px;
     font-weight: 600;
     padding: 2px 0;
 }}
-QLabel#Unterzeile {{
+QLabel#Subline {{
     color: {INK_SOFT};
     font-size: 12.5px;
 }}
-QLabel#Hinweis {{
+QLabel#Hint {{
     color: {INK_FAINT};
     font-size: 12px;
 }}
-QLabel#Warnbanner {{
+QLabel#WarningBanner {{
     background: {WARN_BG};
     border: 1px solid #e8dcbb;
     border-left: 3px solid {WARN};
@@ -99,14 +99,14 @@ QLabel#Warnbanner {{
     color: {INK};
 }}
 
-/* --- Karten ------------------------------------------------------------- */
-QFrame#Karte {{
+/* --- Cards -------------------------------------------------------------- */
+QFrame#Card {{
     background: {SURFACE};
     border: 1px solid {RULE};
     border-radius: 4px;
 }}
 
-/* --- Schalter ----------------------------------------------------------- */
+/* --- Buttons ------------------------------------------------------------ */
 QPushButton {{
     background: {SURFACE};
     border: 1px solid {RULE_STRONG};
@@ -135,39 +135,39 @@ QPushButton:focus {{
     padding: 6px 15px;
 }}
 
-QPushButton#Primaer {{
+QPushButton#Primary {{
     background: {ACCENT};
     color: #ffffff;
     border: 1px solid {ACCENT};
     font-weight: 600;
     padding: 7px 20px;
 }}
-QPushButton#Primaer:hover {{
+QPushButton#Primary:hover {{
     background: {ACCENT_HOVER};
     border-color: {ACCENT_HOVER};
     color: #ffffff;
 }}
-QPushButton#Primaer:pressed {{
+QPushButton#Primary:pressed {{
     background: {ACCENT_PRESSED};
     border-color: {ACCENT_PRESSED};
 }}
-QPushButton#Primaer:disabled {{
+QPushButton#Primary:disabled {{
     background: {RULE_STRONG};
     border-color: {RULE_STRONG};
     color: {SURFACE};
 }}
-QPushButton#Primaer:focus {{
+QPushButton#Primary:focus {{
     border: 2px solid {ACCENT_PRESSED};
     padding: 6px 19px;
 }}
 
-QPushButton#Abbruch:hover {{
+QPushButton#Cancel:hover {{
     border-color: {CRIT};
     color: {CRIT};
     background: {CRIT_BG};
 }}
 
-/* --- Eingaben ----------------------------------------------------------- */
+/* --- Inputs ------------------------------------------------------------- */
 QSpinBox {{
     background: {SURFACE};
     border: 1px solid {RULE_STRONG};
@@ -201,7 +201,7 @@ QCheckBox::indicator:checked {{
 }}
 QCheckBox:disabled {{ color: {INK_FAINT}; }}
 
-/* --- Tabellen ----------------------------------------------------------- */
+/* --- Tables ------------------------------------------------------------- */
 QTableView, QTreeView, QListView {{
     background: {SURFACE};
     border: 1px solid {RULE};
@@ -237,7 +237,7 @@ QTextBrowser {{
     border-radius: 4px;
     padding: 6px 10px;
 }}
-QPlainTextEdit#Protokoll {{
+QPlainTextEdit#Log {{
     background: #1b1a21;
     border: 1px solid {RULE};
     border-radius: 4px;
@@ -248,7 +248,7 @@ QPlainTextEdit#Protokoll {{
     selection-background-color: {ACCENT};
 }}
 
-/* --- Fortschritt -------------------------------------------------------- */
+/* --- Progress ----------------------------------------------------------- */
 QProgressBar {{
     border: 1px solid {RULE_STRONG};
     border-radius: 4px;
@@ -263,7 +263,7 @@ QProgressBar::chunk {{
     border-radius: 3px;
 }}
 
-/* --- Reiter ------------------------------------------------------------- */
+/* --- Tabs --------------------------------------------------------------- */
 QTabWidget::pane {{
     border: 1px solid {RULE};
     border-radius: 4px;

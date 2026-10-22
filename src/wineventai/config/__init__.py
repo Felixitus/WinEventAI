@@ -1,4 +1,4 @@
-"""Konfiguration: Modell und Laden."""
+"""Configuration: model and loading."""
 
 from .loader import (
     commented_out,

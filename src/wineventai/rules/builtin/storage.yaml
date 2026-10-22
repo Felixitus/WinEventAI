@@ -1,70 +1,70 @@
-# Datentraeger und Dateisystem.
+# Disks and file system.
 #
-# Diese Provider heissen klein geschrieben ("disk", "storahci", "Ntfs") und
-# liegen alle im System-Kanal. "Microsoft-Windows-StorAhci" als eigener Kanal
-# existiert nach derzeitigem Kenntnisstand nicht - 'wineventai doctor' prueft
-# das auf dem Zielsystem.
+# These providers are written in lower case ("disk", "storahci", "Ntfs") and
+# all live in the System channel. "Microsoft-Windows-StorAhci" as a channel of
+# its own does not exist to current knowledge - 'wineventai doctor' checks
+# this on the target system.
 
-- id: disk-io-fehler
-  name: E/A-Fehler am Datentraeger (disk 51/153)
+- id: disk-io-error
+  name: I/O error on the disk (disk 51/153)
   match:
     channel: System
     provider: disk
     event_id: [51, 153]
-  severity: kritisch
-  bedeutung: >
-    Beim Lesen oder Schreiben trat ein Fehler auf. 153 bedeutet, dass der
-    Zugriff nach Wiederholung doch gelang - der Datentraeger arbeitet also
-    bereits am Rand seiner Zuverlaessigkeit.
-  typische_ursachen:
-    - Beginnender Datentraegerausfall, defekte Sektoren
-    - Loses oder defektes Kabel, schwache Stromversorgung
-    - Ueberlasteter oder fehlerhafter Controller
-    - "Bei virtuellen Maschinen: Engpass im darunterliegenden Speicher"
-  empfohlene_checks:
-    - SMART- und Zuverlaessigkeitswerte pruefen (--disk-health).
-    - Haeufen sich die Ereignisse in Buendeln? Dann eher Kabel oder Controller.
-    - Datensicherung pruefen, bevor weiter getestet wird.
+  severity: critical
+  meaning: >
+    An error occurred while reading or writing. 153 means the access succeeded
+    after a retry - so the disk is already working at the edge of its
+    reliability.
+  typical_causes:
+    - Disk starting to fail, bad sectors
+    - Loose or defective cable, weak power supply
+    - Overloaded or faulty controller
+    - "For virtual machines: bottleneck in the underlying storage"
+  recommended_checks:
+    - Check SMART and reliability values (collect.disk_health).
+    - Do the events cluster in bundles? Then cable or controller is more likely.
+    - Check the backup before testing any further.
   threshold:
     count_min: 1
     escalate_above: 10
-    escalate_to: kritisch
+    escalate_to: critical
 
 - id: storahci-reset-129
-  name: Geraete-Reset am Controller (storahci/stornvme 129)
+  name: Device reset at the controller (storahci/stornvme 129)
   match:
     channel: System
     provider: [storahci, stornvme, iaStorA, iaStorAC]
     event_id: 129
-  severity: kritisch
-  bedeutung: >
-    Der Speichercontroller hat das Geraet zuruecksetzen muessen, weil ein Befehl
-    nicht in der erwarteten Zeit beantwortet wurde.
-  typische_ursachen:
-    - Datentraeger antwortet zu langsam, beginnender Ausfall
-    - Firmware des Datentraegers oder des Controllers fehlerhaft
-    - Energiesparfunktionen des Controllers (LPM) bei SSDs
-    - Verkabelung
-  empfohlene_checks:
-    - Firmware-Stand von Datentraeger und Controller pruefen.
-    - Bei SSDs Energiesparverhalten des Controllers pruefen.
-    - Zeitliche Korrelation mit Anwendungs-Hangs (1002) ansehen.
+  severity: critical
+  meaning: >
+    The storage controller had to reset the device because a command was not
+    answered in the expected time.
+  typical_causes:
+    - Disk answers too slowly, starting to fail
+    - Faulty firmware of the disk or the controller
+    - Power-saving functions of the controller (LPM) with SSDs
+    - Cabling
+  recommended_checks:
+    - Check the firmware versions of disk and controller.
+    - For SSDs, check the controller's power-saving behavior.
+    - Look at the correlation in time with application hangs (1002).
 
-- id: ntfs-dateisystemschaden
-  name: Dateisystemschaden (Ntfs 55)
+- id: ntfs-filesystem-corruption
+  name: File system corruption (Ntfs 55)
   match:
     channel: System
     provider: [Ntfs, Microsoft-Windows-Ntfs]
     event_id: 55
-  severity: kritisch
-  bedeutung: >
-    Die Struktur des Dateisystems auf einem Datentraeger ist beschaedigt.
-    Windows meldet damit einen Zustand, der ohne Pruefung nicht besser wird.
-  typische_ursachen:
-    - Unsauberes Herunterfahren waehrend Schreibvorgaengen
-    - Defekte Sektoren
-    - Fehlerhafter Treiber im Speicherpfad
-  empfohlene_checks:
-    - Datensicherung pruefen, bevor irgendetwas repariert wird.
-    - Datentraegerpruefung einplanen - dieses Werkzeug fuehrt sie nicht aus.
-    - Zeitliche Naehe zu Kernel-Power 41 pruefen.
+  severity: critical
+  meaning: >
+    The structure of the file system on a disk is damaged. Windows reports a
+    state that does not improve without a check.
+  typical_causes:
+    - Unclean shutdown during write operations
+    - Bad sectors
+    - Faulty driver in the storage path
+  recommended_checks:
+    - Check the backup before repairing anything.
+    - Schedule a disk check - this tool does not run it.
+    - Check for closeness in time to Kernel-Power 41.

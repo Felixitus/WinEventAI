@@ -1,8 +1,8 @@
-"""Collector an der Prozessgrenze - ohne Windows, ohne PowerShell.
+"""Collector at the process boundary - without Windows, without PowerShell.
 
-Getestet wird ``read_ndjson`` mit Fixture-Zeilen. Fuer jeden ``SourceStatus``
-gibt es einen Fall; das ist der Kern der Zusage, dass fehlende Rechte, fehlende
-Kanaele und leere Ergebnisse verschiedene Dinge sind.
+``read_ndjson`` is tested with fixture lines. There is a case for every
+``SourceStatus``; that is the core of the promise that missing rights, missing
+channels and empty results are different things.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import json
 import pytest
 
 from helpers import make_record, ndjson_line
-from wineventai.collect.base import SourceStatus, status_for_exception
+from wineventai.collect.base import SourceResult, SourceStatus, status_for_exception
 from wineventai.collect.shell import read_ndjson, status_from_stderr
 from wineventai.normalize.mapper import NormalizationError, record_from_line
 
@@ -23,7 +23,7 @@ def status_line(**fields: object) -> str:
     return json.dumps({"__status": payload})
 
 
-def test_liest_records_und_statuszeile() -> None:
+def test_reads_records_and_the_status_line() -> None:
     lines = [
         ndjson_line(make_record(minutes_ago=1)),
         ndjson_line(make_record(minutes_ago=2, event_id=6006)),
@@ -37,22 +37,22 @@ def test_liest_records_und_statuszeile() -> None:
     assert result.status_line is not None
 
 
-def test_keep_begrenzt_nur_das_behalten_nicht_das_lesen() -> None:
-    """Die Grenze gilt fuer behaltene Rohdaten, nicht fuer gelesene."""
+def test_keep_limits_only_retention_not_reading() -> None:
+    """The limit applies to retained raw data, not to data read."""
     lines = [ndjson_line(make_record(minutes_ago=i)) for i in range(50)]
     lines.append(status_line(records=50))
 
     result = read_ndjson(lines, source_tool="test", source_ref="System", keep=10)
 
-    assert result.records_read == 50, "gelesen wird immer alles"
-    assert len(result.records) == 10, "behalten wird nur bis zur Grenze"
+    assert result.records_read == 50, "everything is always read"
+    assert len(result.records) == 10, "only retained up to the limit"
 
 
-def test_kaputte_zeile_wird_uebersprungen_nicht_geworfen() -> None:
+def test_a_broken_line_is_skipped_not_raised() -> None:
     lines = [
         ndjson_line(make_record(minutes_ago=1)),
-        "{kein gueltiges json",
-        '{"t": "nicht lesbar", "pr": "X", "id": 1}',
+        "{not valid json",
+        '{"t": "not readable", "pr": "X", "id": 1}',
         status_line(records=1),
     ]
     result = read_ndjson(lines, source_tool="test", source_ref="System")
@@ -73,28 +73,28 @@ def test_kaputte_zeile_wird_uebersprungen_nicht_geworfen() -> None:
         ),
         ("System.UnauthorizedAccessException", 0, SourceStatus.NO_PERMISSION),
         ("System.Security.SecurityException", 0, SourceStatus.NO_PERMISSION),
-        # Der Fall "keine Ereignisse gefunden" ist bei Get-WinEvent nicht
-        # typisiert: generische Ausnahme plus null Records bedeutet EMPTY.
+        # Without an error id (older run directories): a generic exception plus
+        # zero records still counts as EMPTY.
         ("System.Exception", 0, SourceStatus.EMPTY),
-        # Dieselbe generische Ausnahme MIT Records ist ein echter Fehler.
+        # The same generic exception WITH records is a real error.
         ("System.Exception", 12, SourceStatus.FAILED),
     ],
 )
-def test_ausnahmetyp_bestimmt_den_status(
+def test_the_exception_type_determines_the_status(
     exception: str | None, records: int, expected: SourceStatus
 ) -> None:
     assert status_for_exception(exception, records) is expected
 
 
-def test_status_wird_nie_aus_lokalisiertem_text_abgeleitet() -> None:
-    """Deutscher und englischer Fehlertext ergeben denselben Status."""
-    deutsch = status_line(
+def test_status_is_never_derived_from_localized_text() -> None:
+    """German and English error text yield the same status."""
+    german = status_line(
         records=0, exception="System.Diagnostics.Eventing.Reader.EventLogNotFoundException"
     )
-    englisch = status_line(
+    english = status_line(
         records=0, exception="System.Diagnostics.Eventing.Reader.EventLogNotFoundException"
     )
-    for line in (deutsch, englisch):
+    for line in (german, english):
         parsed = read_ndjson([line], source_tool="test", source_ref="Foo")
         assert (
             status_for_exception(parsed.exception_type, parsed.records_read)
@@ -102,15 +102,15 @@ def test_status_wird_nie_aus_lokalisiertem_text_abgeleitet() -> None:
         )
 
 
-def test_blockierte_ausfuehrung_wird_erkannt() -> None:
+def test_blocked_execution_is_detected() -> None:
     stderr = "File cannot be loaded. ... PSSecurityException ... UnauthorizedAccess"
     assert status_from_stderr(stderr) is SourceStatus.BLOCKED
     assert status_from_stderr("") is None
-    assert status_from_stderr("irgendetwas anderes") is None
+    assert status_from_stderr("something else") is None
 
 
-def test_ps51_datumsformat_wird_gelesen() -> None:
-    """Windows PowerShell 5.1 serialisiert DateTime als /Date(...)/."""
+def test_the_ps51_date_format_is_read() -> None:
+    """Windows PowerShell 5.1 serializes DateTime as /Date(...)/."""
     line = json.dumps(
         {"t": "/Date(1757505723000)/", "ch": "System", "pr": "EventLog", "id": 6005, "lvl": 4}
     )
@@ -118,7 +118,7 @@ def test_ps51_datumsformat_wird_gelesen() -> None:
     assert record.timestamp_utc.year == 2025
 
 
-def test_fehlende_event_id_ist_ein_fehler() -> None:
+def test_a_missing_event_id_is_an_error() -> None:
     line = json.dumps({"t": "2026-09-10T12:00:00Z", "pr": "EventLog"})
     with pytest.raises(NormalizationError):
         record_from_line(line, source_tool="test", source_ref="System")
@@ -133,30 +133,30 @@ GERMAN_BINDING_ERROR = (
 )
 
 
-def test_listen_argumente_gehen_mit_senkrechtem_strich_ans_skript() -> None:
+def test_list_arguments_reach_the_script_separated_by_a_vertical_bar() -> None:
     from wineventai.collect.shell import join_list_arg
 
     assert join_list_arg([1001, 4624, 7045]) == "1001|4624|7045"
 
 
-def test_fehler_id_wird_auch_aus_deutscher_powershell_meldung_gelesen() -> None:
+def test_the_error_id_is_read_even_from_a_german_powershell_message() -> None:
     from wineventai.collect.shell import error_id_from_stderr
 
     assert error_id_from_stderr(GERMAN_BINDING_ERROR) == "ParameterArgumentTransformationError"
     assert error_id_from_stderr("") is None
 
 
-def test_strom_ohne_statuszeile_gilt_als_nicht_abgeschlossen() -> None:
+def test_a_stream_without_status_line_counts_as_unfinished() -> None:
     result = read_ndjson([], source_tool="test", source_ref="System")
 
     assert result.completed is False
     assert read_ndjson([status_line()], source_tool="test", source_ref="System").completed
 
 
-def test_skript_ohne_statuszeile_meldet_fehler_statt_keine_treffer(monkeypatch) -> None:
-    """Der Fall vom echten Rechner: Parameterfehler, null Zeilen, kein Status.
+def test_a_script_without_status_line_reports_failure_instead_of_no_hits(monkeypatch) -> None:
+    """The case from the real machine: parameter error, zero lines, no status.
 
-    Vorher stand dann "keine treffer" fuer System, Application und Setup.
+    Before, System, Application and Setup then said "no hits".
     """
     from helpers import WINDOW_END, WINDOW_START
     from wineventai.collect import eventlog
@@ -184,7 +184,7 @@ def test_skript_ohne_statuszeile_meldet_fehler_statt_keine_treffer(monkeypatch) 
 
     assert result.status == SourceStatus.FAILED
     assert result.detail == "ParameterArgumentTransformationError"
-    assert "keine Aussage" in result.note
+    assert "Nothing can be said" in result.note
     args = captured["args"]
     assert args[args.index("-EventIds") + 1] == "41|6008"
     assert args[args.index("-XmlForIds") + 1] == "1001|4624"
@@ -201,12 +201,12 @@ def test_skript_ohne_statuszeile_meldet_fehler_statt_keine_treffer(monkeypatch) 
          SourceStatus.NO_PERMISSION),
     ],
 )
-def test_fehler_id_unterscheidet_leer_fehlend_und_gesperrt(error_id, expected) -> None:
-    """Alle drei kommen als System.Exception - nur die Fehler-ID trennt sie."""
+def test_the_error_id_separates_empty_missing_and_locked(error_id, expected) -> None:
+    """All three arrive as System.Exception - only the error id tells them apart."""
     assert status_for_exception("System.Exception", 0, error_id) is expected
 
 
-def test_fehlender_kanal_erscheint_nicht_mehr_als_keine_treffer() -> None:
+def test_a_missing_channel_no_longer_shows_up_as_no_hits() -> None:
     lines = [
         json.dumps({"__status": {
             "log": "Microsoft-Windows-Kernel-Power/Operational", "records": 0,
@@ -220,21 +220,33 @@ def test_fehlender_kanal_erscheint_nicht_mehr_als_keine_treffer() -> None:
     assert status is SourceStatus.NOT_AVAILABLE
 
 
-def test_unbekannte_fehler_id_bei_null_records_ist_ein_fehler_und_nicht_leer() -> None:
-    assert status_for_exception("System.Exception", 0, "IrgendwasNeues,X") is SourceStatus.FAILED
+def test_an_unknown_error_id_with_zero_records_is_a_failure_not_empty() -> None:
+    assert status_for_exception("System.Exception", 0, "SomethingNew,X") is SourceStatus.FAILED
 
 
-def test_ohne_fehler_id_gilt_fuer_alte_laeufe_die_bisherige_regel() -> None:
+def test_without_error_id_old_runs_keep_the_previous_rule() -> None:
     assert status_for_exception("System.Exception", 0, None) is SourceStatus.EMPTY
 
 
-def test_kanalpruefung_unterscheidet_fehlend_von_nicht_lesbar() -> None:
+def test_status_values_of_older_german_run_directories_still_load() -> None:
+    """Runs from before 2.0 stored German status labels in sources.json."""
+    for legacy, current in (
+        ("erhoben", SourceStatus.COLLECTED),
+        ("keine treffer", SourceStatus.EMPTY),
+        ("kanal fehlt", SourceStatus.NOT_AVAILABLE),
+        ("abgebrochen", SourceStatus.TIMED_OUT),
+    ):
+        result = SourceResult.model_validate({"source_id": "channel:System", "status": legacy})
+        assert result.status is current
+
+
+def test_the_channel_check_separates_missing_from_unreadable() -> None:
     from wineventai.collect.shell import channel_states_from_lines
 
     lines = [
         json.dumps({"name": "System", "state": "present"}),
         json.dumps({"name": "Security", "state": "unreadable"}),
-        json.dumps({"name": "Gibt-Es-Nicht/Operational", "state": "missing"}),
+        json.dumps({"name": "Does-Not-Exist/Operational", "state": "missing"}),
         status_line(),
     ]
     states = channel_states_from_lines(lines)
@@ -242,11 +254,11 @@ def test_kanalpruefung_unterscheidet_fehlend_von_nicht_lesbar() -> None:
     assert states == {
         "system": "present",
         "security": "unreadable",
-        "gibt-es-nicht/operational": "missing",
+        "does-not-exist/operational": "missing",
     }
 
 
-def test_kanalpruefung_ohne_statuszeile_ist_nicht_pruefbar() -> None:
+def test_the_channel_check_without_status_line_cannot_be_checked() -> None:
     from wineventai.collect.shell import channel_states_from_lines
 
     assert channel_states_from_lines([json.dumps({"name": "System", "state": "present"})]) is None

@@ -1,4 +1,4 @@
-"""Hilfsfunktionen fuer Tests - Records bauen, ohne Windows und ohne Dateien."""
+"""Helper functions for tests - building records without Windows and without files."""
 
 from __future__ import annotations
 
@@ -20,13 +20,13 @@ def make_record(
     provider: str = "EventLog",
     event_id: int = 6005,
     level: int = 4,
-    message: str = "Testmeldung",
+    message: str = "Test message",
     properties: list[str | None] | None = None,
     computer: str = "WS-4711",
     user_sid: str | None = None,
     event_data: dict[str, str] | None = None,
 ) -> EventRecord:
-    """Baut einen Record fuer Tests - ohne Datei, ohne Windows."""
+    """Builds a record for tests - without file, without Windows."""
     return EventRecord(
         timestamp_utc=WINDOW_END - timedelta(minutes=minutes_ago),
         channel=channel,
@@ -46,7 +46,7 @@ def make_record(
 
 
 def ndjson_line(record: EventRecord) -> str:
-    """Serialisiert einen Record so, wie das PowerShell-Skript es taete."""
+    """Serializes a record the way the PowerShell script would."""
     return json.dumps(
         {
             "t": record.timestamp_utc.isoformat(),

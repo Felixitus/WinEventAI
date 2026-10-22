@@ -1,0 +1,8 @@
+{
+  "summary": "Answer without mandatory fields.",
+  "hypotheses": [
+    {
+      "statement": "A statement without any evidence and without confidence."
+    }
+  ]
+}

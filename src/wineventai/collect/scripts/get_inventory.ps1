@@ -1,8 +1,8 @@
 <#
-    get_inventory.ps1 - Systemkontext und optionale Zusatzquellen als NDJSON.
+    get_inventory.ps1 - system context and optional extra sources as NDJSON.
 
-    Liefert je nach Schaltern: Systeminventar, Datentraegergesundheit,
-    installierte Updates, signierte Treiber. Alles nur lesend.
+    Depending on the switches it delivers: system inventory, disk health,
+    installed updates, signed drivers. Read-only throughout.
 #>
 [CmdletBinding()]
 param(

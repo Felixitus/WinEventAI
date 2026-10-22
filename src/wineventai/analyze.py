@@ -1,8 +1,8 @@
-"""Auswertung eines Laufverzeichnisses: Enricher, Regeln, Wissensbasis, KI, Bericht.
+"""Analysis of a run directory: enricher, rules, knowledge base, AI, report.
 
-Diese Stufe beruehrt das Zielsystem nicht mehr. Sie liest ausschliesslich aus dem
-Laufverzeichnis - deshalb laesst sie sich beliebig oft mit geaenderten Regeln
-wiederholen, ohne dass jemand erneut Protokolle auslesen muss.
+This stage no longer touches the target system. It reads exclusively from the
+run directory - so it can be repeated any number of times with changed rules
+without anyone having to read the logs again.
 """
 
 from __future__ import annotations
@@ -32,9 +32,14 @@ from .rules.engine import Finding, RuleEngine
 from .rules.loader import load_rules
 from .security.indicators import build_security_report
 
+#: File names of the report inside ``<run>/report``.
+REPORT_HTML = "report.html"
+REPORT_MARKDOWN = "report.md"
+REPORT_JSON = "report.json"
+
 
 class AnalysisResult(BaseModel):
-    """Was bei der Auswertung herauskam."""
+    """What the analysis produced."""
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
@@ -55,11 +60,11 @@ def _system_context(
     ]
     return SystemContext(
         host=redactor.register_host(meta.host) if redactor.enabled else meta.host,
-        betriebssystem=meta.os_caption,
-        zeitraum_von_utc=meta.requested_from_utc.isoformat(),
-        zeitraum_bis_utc=meta.requested_to_utc.isoformat(),
-        boot_sitzungen=len(enrichment.boot_sessions),
-        unvollstaendige_quellen=incomplete,
+        operating_system=meta.os_caption,
+        period_from_utc=meta.requested_from_utc.isoformat(),
+        period_to_utc=meta.requested_to_utc.isoformat(),
+        boot_sessions=len(enrichment.boot_sessions),
+        incomplete_sources=incomplete,
     )
 
 
@@ -72,7 +77,7 @@ def analyze_run(
     probe_runner: ProbeRunner | None = None,
     write_outputs: bool = True,
 ) -> AnalysisResult:
-    """Wertet ein Laufverzeichnis vollstaendig aus."""
+    """Analyzes a run directory completely."""
     log = get_log()
     meta = run.read_meta()
     sources = run.read_sources()
@@ -82,7 +87,7 @@ def analyze_run(
         include_security=config.rules.security_mode,
     )
     engine = RuleEngine(rules, suppress_noise=config.rules.suppress_noise)
-    log.info("Regeln geladen", anzahl=len(rules), sicherheitsmodus=config.rules.security_mode)
+    log.info("Rules loaded", count=len(rules), security_mode=config.rules.security_mode)
 
     records_by_source = load_records(run)
     enricher = Enricher(
@@ -101,10 +106,10 @@ def analyze_run(
     )
     enrichment = enricher.consume(merge_sources(records_by_source))
     log.info(
-        "Verdichtet",
-        ereignisse=enrichment.total_events,
+        "Condensed",
+        events=enrichment.total_events,
         fingerprints=len(enrichment.groups),
-        reduktion=f"{enrichment.reduction_rate * 100:.1f}%",
+        reduction=f"{enrichment.reduction_rate * 100:.1f}%",
     )
 
     findings = engine.evaluate(enrichment)
@@ -115,9 +120,9 @@ def analyze_run(
         if entry is None:
             continue
         finding.kb_confidence = str(entry.confidence)
-        finding.kb_quelle = entry.quelle_url
+        finding.kb_source = entry.source_url
         if entry.usable_in_prompt:
-            finding.kb_bedeutung = entry.bedeutung.strip()
+            finding.kb_meaning = entry.meaning.strip()
 
     unknown = collect_unknown(enrichment, knowledge)
     if write_outputs:
@@ -129,26 +134,26 @@ def analyze_run(
     ai_result, bundles = layer.run(findings, context)
 
     if write_outputs:
-        for befund_id, parts in bundles.items():
+        for finding_id, parts in bundles.items():
             for index, part in enumerate(parts, start=1):
                 suffix = "" if len(parts) == 1 else f"_{index}"
-                name = f"{befund_id.replace('::', '__')}{suffix}.json"
+                name = f"{finding_id.replace('::', '__')}{suffix}.json"
                 (run.bundles_dir / name).write_text(part.as_prompt_json(), encoding="utf-8")
         for entry in ai_result.findings:
-            name = f"{entry.befund_id.replace('::', '__')}.json"
+            name = f"{entry.finding_id.replace('::', '__')}.json"
             (run.ai_dir / name).write_text(
                 entry.model_dump_json(indent=2), encoding="utf-8"
             )
 
-    # Sonden laufen NACH dem KI-Layer, und das ist kein Zufall: Ein Messergebnis
-    # traegt keine Event-IDs, also kann die Belegpruefung es nicht gegen die
-    # Eingabe halten. Alles, was im Prompt steht und nicht pruefbar ist, ist eine
-    # Einladung zum Erfinden. Die Sonden erscheinen deshalb im Bericht und in der
-    # Oberflaeche, aber nie im Bundle.
+    # Probes run AFTER the AI layer, and that is no accident: a measurement
+    # carries no event ids, so the evidence check cannot hold it against the
+    # input. Anything in the prompt that cannot be checked is an invitation to
+    # invent. The probes therefore appear in the report and in the user
+    # interface, but never in the bundle.
     runner = probe_runner or ProbeRunner(config, run_host=meta.host)
-    gemessen = runner.attach(findings)
-    if gemessen:
-        log.info("Sonden gemessen", anzahl=gemessen)
+    measured = runner.attach(findings)
+    if measured:
+        log.info("Probes measured", count=measured)
 
     security = build_security_report(
         findings,
@@ -187,31 +192,31 @@ def analyze_run(
 
 
 def write_report_files(report: ReportModel, run: RunDirectory, config: Config) -> list[Path]:
-    """Schreibt die konfigurierten Ausgabeformate."""
+    """Writes the configured output formats."""
     written: list[Path] = []
     if "html" in config.report.formats:
-        written.append(write_html(report, run.report_dir / "bericht.html"))
+        written.append(write_html(report, run.report_dir / REPORT_HTML))
     if "md" in config.report.formats:
-        written.append(write_markdown(report, run.report_dir / "bericht.md"))
+        written.append(write_markdown(report, run.report_dir / REPORT_MARKDOWN))
     if "json" in config.report.formats:
-        written.append(write_json(report, run.report_dir / "bericht.json"))
+        written.append(write_json(report, run.report_dir / REPORT_JSON))
     return written
 
 
 def redacted_report(
     report: ReportModel, run: RunDirectory, config: Config, redactor: Redactor
 ) -> list[Path]:
-    """Schreibt zusaetzlich eine weitergabefaehige Fassung plus Zuordnungstabelle.
+    """Additionally writes a shareable version plus mapping table.
 
-    Der Bericht enthaelt Anmeldezeiten, Kontennamen und Rechnernamen - also
-    personenbezogene Daten - und wird herumgeschickt. Diese Fassung laesst die
-    Pseudonyme stehen; die Zuordnungstabelle liegt daneben und geht nicht mit.
+    The report contains logon times, account names and machine names - i.e.
+    personal data - and gets passed around. This version keeps the pseudonyms;
+    the mapping table lies next to it and does not go along.
     """
     import json
 
-    target = run.report_dir / "bericht_pseudonymisiert.html"
+    target = run.report_dir / "report_pseudonymized.html"
     written = [write_html(report.model_copy(update={"redacted": True}), target)]
-    mapping_path = run.report_dir / "zuordnung.json"
+    mapping_path = run.report_dir / "mapping.json"
     mapping_path.write_text(
         json.dumps(redactor.mapping(), indent=2, ensure_ascii=False), encoding="utf-8"
     )

@@ -1,12 +1,16 @@
-"""Ueberwachungsrichtlinie pruefen - der Unterschied zwischen "kein Befund"
-und "nicht protokolliert".
+"""Checking the audit policy - the difference between "no finding" and "not
+logged".
 
-Ohne aktivierte Prozessverfolgung gibt es keine 4688. Ohne Script Block Logging
-gibt es (von als verdaechtig eingestuften Bloecken abgesehen) keine 4104. Ein
-Werkzeug, das daraus "unauffaellig" macht, ist gefaehrlicher als keines.
+Without process tracking enabled there is no 4688. Without script block
+logging there is (apart from blocks rated as suspicious) no 4104. A tool that
+turns this into "inconspicuous" is more dangerous than none.
 
-Ohne Adminrechte ist ``auditpol`` selbst nicht abfragbar. Dann lautet die
-Antwort "Pruefstatus unbekannt" - nicht "aktiv".
+Without admin rights ``auditpol`` itself cannot be queried. Then the answer is
+"check state unknown" - not "active".
+
+Known weakness (open item): subcategory names and the setting are matched as
+text, in English and German. That is the one place in the code that relies on
+localized output; a language-neutral variant would key on the subcategory GUID.
 """
 
 from __future__ import annotations
@@ -21,13 +25,13 @@ from ..applog import get_log
 
 
 class PolicyState(StrEnum):
-    ACTIVE = "aktiv"
-    INACTIVE = "nicht aktiv"
-    UNKNOWN = "unbekannt"
+    ACTIVE = "active"
+    INACTIVE = "not active"
+    UNKNOWN = "unknown"
 
 
 class PolicyCheck(BaseModel):
-    """Ergebnis fuer eine Unterkategorie."""
+    """Result for one subcategory."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -37,7 +41,8 @@ class PolicyCheck(BaseModel):
     hint: str = ""
 
 
-#: Unterkategorie -> Event-IDs, die ohne sie gar nicht entstehen.
+#: Subcategory -> event ids that do not arise at all without it. The German
+#: names are what auditpol prints on a German Windows.
 SUBCATEGORY_EVENTS: dict[str, list[int]] = {
     "Process Creation": [4688],
     "Prozesserstellung": [4688],
@@ -53,16 +58,15 @@ SUBCATEGORY_EVENTS: dict[str, list[int]] = {
     "Sicherheitssystemerweiterung": [4697],
 }
 
-#: Werte, die auditpol als "aus" ausgibt - beide Sprachfassungen.
+#: Values auditpol prints for "off" - both language versions.
 _OFF_VALUES = {"no auditing", "keine ueberwachung", "keine überwachung", ""}
 
 
 def parse_auditpol(output: str) -> dict[str, PolicyState]:
-    """Wertet die CSV-Ausgabe von ``auditpol /get /category:* /r`` aus.
+    """Evaluates the CSV output of ``auditpol /get /category:* /r``.
 
-    Die Spaltenueberschriften sind lokalisiert; ausgewertet wird deshalb ueber
-    die Position, nicht ueber den Namen. Unterkategorie ist Spalte 3,
-    Einstellung die letzte.
+    The column headings are localized; evaluation is therefore by position, not
+    by name. Subcategory is column 3, the setting the last one.
     """
     states: dict[str, PolicyState] = {}
     for index, line in enumerate(output.splitlines()):
@@ -82,14 +86,14 @@ def parse_auditpol(output: str) -> dict[str, PolicyState]:
 
 
 def query_audit_policy(*, is_admin: bool, timeout: float = 20.0) -> dict[str, PolicyState]:
-    """Fragt die Ueberwachungsrichtlinie ab. Ohne Rechte: leeres Ergebnis."""
+    """Queries the audit policy. Without rights: empty result."""
     if not is_admin:
         return {}
     executable = shutil.which("auditpol")
     if executable is None:
         return {}
     try:
-        completed = subprocess.run(  # noqa: S603 - fester Systembefehl, keine Nutzereingabe
+        completed = subprocess.run(  # noqa: S603 - fixed system command, no user input
             [executable, "/get", "/category:*", "/r"],
             capture_output=True,
             text=True,
@@ -99,7 +103,7 @@ def query_audit_policy(*, is_admin: bool, timeout: float = 20.0) -> dict[str, Po
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        get_log().warn("auditpol nicht abfragbar", grund=type(exc).__name__)
+        get_log().warn("auditpol not queryable", reason=type(exc).__name__)
         return {}
     if completed.returncode != 0:
         return {}
@@ -107,7 +111,7 @@ def query_audit_policy(*, is_admin: bool, timeout: float = 20.0) -> dict[str, Po
 
 
 def evaluate_policy(states: dict[str, PolicyState]) -> list[PolicyCheck]:
-    """Bildet die Richtlinie auf die betroffenen Event-IDs ab."""
+    """Maps the policy onto the affected event ids."""
     checks: list[PolicyCheck] = []
     seen: set[tuple[int, ...]] = set()
 
@@ -123,9 +127,9 @@ def evaluate_policy(states: dict[str, PolicyState]) -> list[PolicyCheck]:
                     state=PolicyState.UNKNOWN,
                     affects_event_ids=event_ids,
                     hint=(
-                        "Pruefstatus unbekannt. Ohne Adminrechte laesst sich die "
-                        "Ueberwachungsrichtlinie nicht abfragen; ein Fehlen dieser "
-                        "Ereignisse ist deshalb NICHT als Unauffaelligkeit zu lesen."
+                        "Check state unknown. Without admin rights the audit policy "
+                        "cannot be queried; the absence of these events must therefore "
+                        "NOT be read as inconspicuousness."
                     ),
                 )
             )
@@ -142,15 +146,14 @@ def evaluate_policy(states: dict[str, PolicyState]) -> list[PolicyCheck]:
                     ""
                     if state is PolicyState.ACTIVE
                     else (
-                        "Diese Unterkategorie wird nicht ueberwacht. Die betroffenen "
-                        "Ereignisse entstehen auf diesem System gar nicht - "
-                        "'nicht protokolliert', nicht 'kein Befund'."
+                        "This subcategory is not audited. The affected events do not "
+                        "arise on this system at all - 'not logged', not 'no finding'."
                     )
                 ),
             )
         )
 
-    # Doppelte Sprachfassungen zusammenfassen: pro ID-Menge nur der beste Zustand.
+    # Merge duplicate language versions: only the best state per id set.
     best: dict[tuple[int, ...], PolicyCheck] = {}
     order = {PolicyState.ACTIVE: 0, PolicyState.INACTIVE: 1, PolicyState.UNKNOWN: 2}
     for check in checks:
@@ -162,7 +165,7 @@ def evaluate_policy(states: dict[str, PolicyState]) -> list[PolicyCheck]:
 
 
 def not_logged_event_ids(checks: list[PolicyCheck]) -> set[int]:
-    """Event-IDs, die auf diesem System nachweislich nicht entstehen."""
+    """Event ids that demonstrably do not arise on this system."""
     out: set[int] = set()
     for check in checks:
         if check.state is PolicyState.INACTIVE:
@@ -171,24 +174,23 @@ def not_logged_event_ids(checks: list[PolicyCheck]) -> set[int]:
 
 
 def fix_suggestion(check: PolicyCheck) -> dict[str, str]:
-    """Vorschlag, keine Aktion: Befehl, Wirkung, Risiko, Rueckbau."""
+    """A suggestion, not an action: command, effect, risk, rollback."""
     return {
-        "befehl": (
+        "command": (
             f'auditpol /set /subcategory:"{check.subcategory}" '
             "/success:enable /failure:enable"
         ),
-        "wirkung": (
-            "Ab sofort entstehen Ereignisse "
+        "effect": (
+            "From now on events "
             + ", ".join(str(value) for value in check.affects_event_ids)
-            + "."
+            + " are produced."
         ),
-        "risiko": (
-            "Das Sicherheitsprotokoll waechst deutlich schneller; auf Servern kann es "
-            "schneller ueberlaufen. Ausserdem werden personenbezogene Daten "
-            "protokolliert - vor dem Regelbetrieb mit Datenschutz und "
-            "Arbeitnehmervertretung klaeren."
+        "risk": (
+            "The security log grows considerably faster; on servers it can overflow "
+            "sooner. In addition, personal data is logged - clarify with data "
+            "protection and the works council before regular operation."
         ),
-        "rueckbau": (
+        "rollback": (
             f'auditpol /set /subcategory:"{check.subcategory}" /success:disable /failure:disable'
         ),
     }

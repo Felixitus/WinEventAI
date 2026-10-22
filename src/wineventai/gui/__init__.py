@@ -1,11 +1,11 @@
-"""Grafische Oberflaeche (PySide6, optional).
+"""Graphical user interface (PySide6, optional).
 
-Die Oberflaeche ist eine Huelle um dieselben Funktionen, die auch die
-Kommandozeile aufruft. Sie enthaelt keine Diagnoselogik - sonst driften GUI und
-CLI auseinander, und man debuggt am Ende zwei Werkzeuge.
+The interface is a shell around the same functions the command line calls. It
+contains no diagnostic logic - otherwise GUI and CLI drift apart, and in the
+end one debugs two tools.
 
-Importiert wird Qt erst in ``run_gui``, damit ``import wineventai.gui`` auch auf
-Systemen ohne PySide6 funktioniert.
+Qt is only imported in ``run_gui``, so that ``import wineventai.gui`` also works
+on systems without PySide6.
 """
 
 from .app import GUI_MISSING, gui_available, run_gui

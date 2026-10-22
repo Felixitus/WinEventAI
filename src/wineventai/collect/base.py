@@ -1,14 +1,13 @@
-"""Gemeinsame Begriffe aller Collector.
+"""Shared vocabulary of all collectors.
 
-``SourceStatus`` ist der wichtigste Typ dieser Datei. Er unterscheidet drei
-Lagen, die im Bericht niemals gleich aussehen duerfen:
+``SourceStatus`` is the most important type in this file. It separates three
+situations that must never look alike in the report:
 
-* ``EMPTY``          - erhoben, im Zeitfenster nichts gefunden. Das ist "kein Befund".
-* ``NOT_LOGGED``     - Windows erhebt die Quelle auf diesem System gar nicht.
-* ``NO_PERMISSION``  - die Quelle existiert, aber der Lauf hatte keine Rechte.
+* ``EMPTY``          - collected, nothing found in the window. That is "no finding".
+* ``NOT_LOGGED``     - Windows does not record this source on this system at all.
+* ``NO_PERMISSION``  - the source exists, but the run lacked the rights to read it.
 
-Wer diese drei zusammenwirft, produziert ein Werkzeug, das Schweigen als
-Unbedenklichkeit meldet.
+A tool that lumps these together reports silence as all-clear.
 """
 
 from __future__ import annotations
@@ -21,21 +20,45 @@ from pydantic import BaseModel, ConfigDict
 
 from ..normalize.schema import EventRecord
 
+#: Status values written by versions before 2.0, which used German labels.
+#: Run directories from those versions must stay readable, so ``_missing_``
+#: maps them onto the current members instead of failing validation.
+_LEGACY_STATUS_VALUES: dict[str, str] = {
+    "erhoben": "collected",
+    "keine treffer": "no hits",
+    "kanal fehlt": "not available",
+    "keine rechte": "no permission",
+    "nicht protokolliert": "not logged",
+    "abgeschaltet": "disabled",
+    "unvollstaendig": "incomplete",
+    "abgebrochen": "timed out",
+    "blockiert": "blocked",
+    "fehler": "failed",
+}
+
 
 class SourceStatus(StrEnum):
-    COLLECTED = "erhoben"
-    EMPTY = "keine treffer"
-    NOT_AVAILABLE = "kanal fehlt"
-    NO_PERMISSION = "keine rechte"
-    NOT_LOGGED = "nicht protokolliert"
-    DISABLED = "abgeschaltet"
-    TRUNCATED = "unvollstaendig"
-    TIMED_OUT = "abgebrochen"
-    BLOCKED = "blockiert"
-    FAILED = "fehler"
+    COLLECTED = "collected"
+    EMPTY = "no hits"
+    NOT_AVAILABLE = "not available"
+    NO_PERMISSION = "no permission"
+    NOT_LOGGED = "not logged"
+    DISABLED = "disabled"
+    TRUNCATED = "incomplete"
+    TIMED_OUT = "timed out"
+    BLOCKED = "blocked"
+    FAILED = "failed"
+
+    @classmethod
+    def _missing_(cls, value: object) -> SourceStatus | None:
+        if isinstance(value, str):
+            current = _LEGACY_STATUS_VALUES.get(value.strip().lower())
+            if current is not None:
+                return cls(current)
+        return None
 
 
-#: Lagen, in denen "keine Befunde" eine falsche Aussage waere.
+#: Situations in which "no findings" would be a false statement.
 INCONCLUSIVE: frozenset[SourceStatus] = frozenset(
     {
         SourceStatus.NOT_AVAILABLE,
@@ -49,21 +72,21 @@ INCONCLUSIVE: frozenset[SourceStatus] = frozenset(
     }
 )
 
-STATUS_HINT_DE: dict[SourceStatus, str] = {
-    SourceStatus.COLLECTED: "Vollstaendig erhoben.",
-    SourceStatus.EMPTY: "Erhoben, im Zeitfenster ohne Treffer.",
-    SourceStatus.NOT_AVAILABLE: "Kanal auf diesem System nicht vorhanden.",
-    SourceStatus.NO_PERMISSION: "Keine Berechtigung. Mit Adminrechten wiederholen.",
-    SourceStatus.NOT_LOGGED: "Wird auf diesem System nicht protokolliert - das ist kein Befund.",
-    SourceStatus.DISABLED: "Per Konfiguration abgeschaltet.",
-    SourceStatus.TRUNCATED: "Nur teilweise erhoben. Abgedeckter Zeitraum beachten.",
-    SourceStatus.TIMED_OUT: "Zeitlimit erreicht. Abgedeckter Zeitraum beachten.",
-    SourceStatus.BLOCKED: "Ausfuehrung blockiert, z.B. durch Ausfuehrungsrichtlinie.",
-    SourceStatus.FAILED: "Erhebung fehlgeschlagen.",
+STATUS_HINT: dict[SourceStatus, str] = {
+    SourceStatus.COLLECTED: "Fully collected.",
+    SourceStatus.EMPTY: "Collected, no hits in the time window.",
+    SourceStatus.NOT_AVAILABLE: "Not present on this system.",
+    SourceStatus.NO_PERMISSION: "No permission. Repeat with administrator rights.",
+    SourceStatus.NOT_LOGGED: "Not recorded on this system - this is not a finding.",
+    SourceStatus.DISABLED: "Disabled by configuration.",
+    SourceStatus.TRUNCATED: "Only partially collected. Check the covered period.",
+    SourceStatus.TIMED_OUT: "Time limit reached. Check the covered period.",
+    SourceStatus.BLOCKED: "Execution blocked, e.g. by the execution policy.",
+    SourceStatus.FAILED: "Collection failed.",
 }
 
-#: Abbildung .NET-Ausnahmetyp -> Status. Bewusst ueber den TYPNAMEN, nie ueber
-#: den Meldungstext: Fehlermeldungen von Get-WinEvent sind lokalisiert.
+#: .NET exception type -> status. Deliberately keyed on the TYPE NAME, never on
+#: the message text: Get-WinEvent error messages are localized.
 EXCEPTION_STATUS: dict[str, SourceStatus] = {
     "System.Diagnostics.Eventing.Reader.EventLogNotFoundException": SourceStatus.NOT_AVAILABLE,
     "System.Diagnostics.Eventing.Reader.EventLogException": SourceStatus.FAILED,
@@ -75,16 +98,15 @@ EXCEPTION_STATUS: dict[str, SourceStatus] = {
 }
 
 
-#: Abbildung FullyQualifiedErrorId -> Status. Get-WinEvent wirft fuer "keine
-#: Ereignisse" UND fuer "Kanal gibt es nicht" dieselbe generische
-#: ``System.Exception``; unterscheidbar sind beide nur ueber die
-#: FullyQualifiedErrorId, die - anders als der Meldungstext - nicht
-#: lokalisiert ist (Windows 11, de-AT, PowerShell 5.1 beobachtet). Verglichen
-#: wird der Teil vor dem ersten Komma.
+#: FullyQualifiedErrorId -> status. Get-WinEvent throws the same generic
+#: ``System.Exception`` for "no events" AND for "channel does not exist"; the two
+#: can only be told apart by the FullyQualifiedErrorId, which - unlike the
+#: message - is not localized (observed on Windows 11, de-AT, PowerShell 5.1).
+#: The part before the first comma is compared.
 #:
-#: Bekannte Falle: Der Security-Kanal OHNE Adminrechte liefert ebenfalls
-#: ``NoMatchingEventsFound``. Fehlende Rechte sehen dort also aus wie "leer".
-#: Deshalb prueft ``EventChannelCollector`` ``requires_admin`` VOR der Abfrage.
+#: Known trap: the Security channel WITHOUT admin rights also yields
+#: ``NoMatchingEventsFound``, so missing rights look like "empty" there. That
+#: is why ``EventChannelCollector`` checks ``requires_admin`` BEFORE querying.
 ERROR_ID_STATUS: dict[str, SourceStatus] = {
     "NoMatchingEventsFound": SourceStatus.EMPTY,
     "NoMatchingLogsFound": SourceStatus.NOT_AVAILABLE,
@@ -95,14 +117,13 @@ ERROR_ID_STATUS: dict[str, SourceStatus] = {
 def status_for_exception(
     exception_type: str | None, records: int, error_id: str | None = None
 ) -> SourceStatus:
-    """Bildet Ausnahme-Typname und FullyQualifiedErrorId auf einen Status ab.
+    """Maps exception type name and FullyQualifiedErrorId onto a status.
 
-    Die Fehler-ID hat Vorrang, weil sie die genauere Aussage ist. Liegt eine
-    Fehler-ID vor, die nicht bekannt ist, wird bei null Records NICHT mehr
-    "keine Treffer" angenommen, sondern "Fehler": Die frueher geltende Regel
-    "generische Ausnahme plus null Records heisst leer" hat auf einem echten
-    Rechner einen fehlenden Kanal als leer gemeldet. Fehlt die Fehler-ID ganz
-    (Laufverzeichnisse aelterer Versionen), gilt die alte Regel weiter.
+    The error id wins because it is the more precise statement. If an error id
+    is present but unknown, zero records are NOT read as "no hits" but as
+    "failed": the earlier rule "generic exception plus zero records means
+    empty" reported a missing channel as empty on a real machine. Without any
+    error id (run directories of older versions) the old rule still applies.
     """
     if error_id:
         mapped_id = ERROR_ID_STATUS.get(error_id.split(",", 1)[0].strip())
@@ -119,7 +140,7 @@ def status_for_exception(
 
 
 class SourceResult(BaseModel):
-    """Was ueber eine Quelle bekannt ist - unabhaengig davon, ob sie Daten lieferte."""
+    """What is known about a source - whether or not it delivered data."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -141,10 +162,10 @@ class SourceResult(BaseModel):
 
     @property
     def coverage_gap(self) -> bool:
-        """True, wenn der abgedeckte Zeitraum merklich hinter dem angeforderten bleibt.
+        """True if the covered period falls noticeably short of the requested one.
 
-        Genau das ist die Stelle, an der ein Zeitlimit sonst still zu einem
-        verkleinerten Zeitfenster wuerde.
+        This is exactly the spot where a time limit would otherwise silently
+        turn into a smaller time window.
         """
         if self.requested_from_utc is None or self.covered_from_utc is None:
             return self.status in {SourceStatus.TRUNCATED, SourceStatus.TIMED_OUT}
@@ -152,11 +173,11 @@ class SourceResult(BaseModel):
         return gap > 3600.0
 
     def hint(self) -> str:
-        return STATUS_HINT_DE.get(self.status, "")
+        return STATUS_HINT.get(self.status, "")
 
 
 class CollectedSource(BaseModel):
-    """Ergebnis einer Erhebung inklusive der behaltenen Records."""
+    """Result of one collection including the retained records."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -165,15 +186,15 @@ class CollectedSource(BaseModel):
 
 
 class EventSource(Protocol):
-    """Schnittstelle jedes Collectors.
+    """Interface of every collector.
 
-    Kein Modul oberhalb dieser Schnittstelle darf wissen, dass unter ihr
-    PowerShell laeuft. Das ist die Voraussetzung dafuer, das Backend spaeter
-    gegen pywin32 tauschen zu koennen, ohne die Pipeline anzufassen.
+    No module above this interface may know that PowerShell runs beneath it.
+    That is the precondition for swapping the backend for pywin32 later without
+    touching the pipeline.
     """
 
     source_id: str
 
     def collect(self) -> CollectedSource:
-        """Erhebt die Quelle und liefert Status plus Records."""
+        """Collects the source and returns status plus records."""
         ...

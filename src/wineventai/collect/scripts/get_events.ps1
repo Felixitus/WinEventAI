@@ -1,19 +1,20 @@
 <#
-    get_events.ps1 - Ereignisse als NDJSON, eine Zeile je Record.
+    get_events.ps1 - events as NDJSON, one line per record.
 
-    Bewusste Entscheidungen:
+    Deliberate decisions:
 
-    * KEIN "Get-WinEvent | ConvertTo-Json" auf dem Gesamtergebnis. Das sammelt die
-      komplette Pipeline im Speicher, bevor die erste Zeile herauskommt. Stattdessen
-      ConvertTo-Json je Record innerhalb von ForEach-Object: echtes Streaming, der
-      aufrufende Prozess kann jederzeit abbrechen und behaelt das bereits Gelesene.
-    * Zeitstempel werden IMMER selbst formatiert. Windows PowerShell 5.1
-      serialisiert DateTime als /Date(1757...)/ , PowerShell 7 als ISO-8601.
-      Durch die eigene Formatierung ist die PS-Version an dieser Stelle egal.
-    * Fehler werden ueber den .NET-TYPNAMEN gemeldet, nie ueber den Meldungstext.
-      Fehlermeldungen sind lokalisiert; wer sie parst, baut einen Bug mit Zeitzuender.
-    * -Depth 4, weil der Default 2 ist und das Property-Array sonst als Typname
-      statt als Wert erscheint.
+    * NO "Get-WinEvent | ConvertTo-Json" on the whole result. That collects the
+      entire pipeline in memory before the first line comes out. Instead
+      ConvertTo-Json per record inside ForEach-Object: real streaming, the
+      calling process can abort at any time and keeps what was already read.
+    * Timestamps are ALWAYS formatted here. Windows PowerShell 5.1 serializes
+      DateTime as /Date(1757...)/, PowerShell 7 as ISO-8601. With our own
+      formatting the PS version does not matter at this point.
+    * Errors are reported by the .NET TYPE NAME and FullyQualifiedErrorId, never
+      by the message text. Error messages are localized; parsing them builds a
+      bug with a timer.
+    * -Depth 4, because the default is 2 and the property array would otherwise
+      appear as a type name instead of a value.
 #>
 [CmdletBinding()]
 param(
@@ -21,8 +22,8 @@ param(
     [string] $Path,
     [Parameter(Mandatory = $true)][string] $StartUtc,
     [Parameter(Mandatory = $true)][string] $EndUtc,
-    # Listen als '|'-getrennte Zeichenkette, nicht als [int[]]: Ueber -File
-    # scheitert "1001,4624,..." an der Typumwandlung (PS 5.1, beobachtet).
+    # Lists as a '|'-separated string, not as [int[]]: via -File,
+    # "1001,4624,..." fails the type conversion (PS 5.1, observed).
     [string] $EventIds = '',
     [string] $XmlForIds = '',
     [int] $MaxRecords = 0
@@ -71,9 +72,9 @@ try {
                                [Globalization.DateTimeStyles]::AdjustToUniversal -bor
                                [Globalization.DateTimeStyles]::AssumeUniversal)
 
-    # FilterHashtable reicht Kanal, Zeitraum UND ID-Liste als XPath an die
-    # Event-Log-API durch. Die Filterung passiert damit im Dienst, nicht hier.
-    # Fuer Security ist das der Unterschied zwischen lesbar und unbrauchbar.
+    # FilterHashtable passes channel, period AND id list as XPath to the event
+    # log API. The filtering therefore happens in the service, not here. For
+    # Security that is the difference between readable and unusable.
     $filter = @{ StartTime = $start.ToLocalTime(); EndTime = $end.ToLocalTime() }
     if ($Path) { $filter['Path'] = $Path } else { $filter['LogName'] = $LogName }
     if ($eventIdList.Count -gt 0) { $filter['Id'] = $eventIdList }
@@ -131,10 +132,10 @@ try {
     }
 }
 catch {
-    # Typname statt Text - lokalisierungsfest.
+    # Type name instead of text - immune to localization.
     $script:Exception = $_.Exception.GetType().FullName
-    # Sprachneutral: unterscheidet "keine Ereignisse" (NoMatchingEventsFound)
-    # von "Kanal fehlt" (NoMatchingLogsFound) - beide kommen als System.Exception.
+    # Language-neutral: separates "no events" (NoMatchingEventsFound) from
+    # "channel missing" (NoMatchingLogsFound) - both arrive as System.Exception.
     $script:ErrorId = [string]$_.FullyQualifiedErrorId
 }
 

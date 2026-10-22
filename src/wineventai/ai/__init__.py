@@ -1,4 +1,4 @@
-"""KI-Layer: arbeitet ausschliesslich auf dem verdichteten Befund."""
+"""AI layer: works exclusively on the condensed finding."""
 
 from .bundles import FindingBundle, SystemContext, build_bundle, estimate_tokens, fit_to_budget
 from .client import (

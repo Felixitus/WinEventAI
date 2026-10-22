@@ -1,9 +1,9 @@
-"""Streaming-Aggregation: der eigentliche Enricher.
+"""Streaming aggregation: the actual enricher.
 
-Ein einziger Durchlauf ueber den absteigend zusammengefuehrten Strom erledigt
-alles: Fingerprint, Zaehler, Histogramm, Boot-Session, Kontextfenster und
-Retention. Das ist Voraussetzung dafuer, dass der Speicherbedarf an der Zahl
-verschiedener Fingerprints haengt und nicht an der Zahl der Events.
+A single pass over the merged, descending stream does everything: fingerprint,
+counters, histogram, boot session, context window and retention. That is the
+precondition for memory use depending on the number of distinct fingerprints
+and not on the number of events.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from .retention import Priority, RetentionReservoir
 
 
 class FingerprintGroup(BaseModel):
-    """Alle Vorkommen eines Fingerprints, verdichtet."""
+    """All occurrences of one fingerprint, condensed."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -57,20 +57,20 @@ class FingerprintGroup(BaseModel):
             "fingerprint": self.fingerprint,
             "provider": self.provider,
             "event_id": self.event_id,
-            "kanal": self.channel,
+            "channel": self.channel,
             "level": self.level,
             "level_text": self.level_label,
-            "anzahl": self.count,
-            "erstes_vorkommen_utc": self.first_seen_utc.isoformat(),
-            "letztes_vorkommen_utc": self.last_seen_utc.isoformat(),
+            "count": self.count,
+            "first_seen_utc": self.first_seen_utc.isoformat(),
+            "last_seen_utc": self.last_seen_utc.isoformat(),
             "bursts": [burst.model_dump(mode="json") for burst in self.bursts],
-            "boot_sitzungen": {str(k): v for k, v in sorted(self.boot_sessions.items())},
-            "beispiele": [record.to_public_dict() for record in self.samples],
+            "boot_sessions": {str(k): v for k, v in sorted(self.boot_sessions.items())},
+            "samples": [record.to_public_dict() for record in self.samples],
         }
 
 
 class EnrichmentResult(BaseModel):
-    """Was der Enricher aus einem Lauf herausholt."""
+    """What the enricher extracts from a run."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -84,7 +84,7 @@ class EnrichmentResult(BaseModel):
 
     @property
     def reduction_rate(self) -> float:
-        """Anteil, um den die Deduplizierung die Menge verkleinert hat."""
+        """Share by which deduplication reduced the volume."""
         if not self.total_events:
             return 0.0
         return 1.0 - (len(self.groups) / self.total_events)
@@ -97,7 +97,7 @@ class EnrichmentResult(BaseModel):
 
 
 class Enricher:
-    """Verdichtet einen Event-Strom in einem Durchlauf."""
+    """Condenses an event stream in one pass."""
 
     def __init__(
         self,
@@ -138,7 +138,7 @@ class Enricher:
         return Priority.OTHER
 
     def feed(self, record: EventRecord) -> None:
-        """Nimmt einen Record aus dem absteigenden Gesamtstrom auf."""
+        """Takes one record from the descending overall stream."""
         self._total += 1
 
         fingerprint = fingerprint_for(record)
@@ -163,7 +163,7 @@ class Enricher:
             self._groups[fingerprint] = group
 
         group.count += 1
-        # Absteigender Strom: der erste gesehene Record ist der spaeteste.
+        # Descending stream: the first record seen is the latest.
         if record.timestamp_utc > group.last_seen_utc:
             group.last_seen_utc = record.timestamp_utc
         if record.timestamp_utc < group.first_seen_utc:
@@ -176,7 +176,7 @@ class Enricher:
             group.computers.add(record.computer)
         if len(group.samples) < self.samples_per_group:
             group.samples.append(record)
-        # Die niedrigste (schwerste) beobachtete Stufe gewinnt.
+        # The lowest (most severe) level observed wins.
         group.level = min(group.level, record.level)
 
     def consume(self, records: Iterable[EventRecord]) -> EnrichmentResult:

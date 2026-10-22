@@ -1,82 +1,82 @@
-# Hardware und Treiber.
+# Hardware and drivers.
 
-- id: whea-korrigiert
-  name: Korrigierter Hardwarefehler (WHEA-Logger 17/19)
+- id: whea-corrected
+  name: Corrected hardware error (WHEA-Logger 17/19)
   match:
     channel: System
     provider: Microsoft-Windows-WHEA-Logger
     event_id: [17, 19]
-  severity: warnung
-  bedeutung: >
-    Die Hardware hat einen Fehler gemeldet und selbst korrigiert. Einzeln ist
-    das unauffaellig; in Serie ist es ein Fruehwarnsignal, meist fuer
-    Arbeitsspeicher, Prozessor-Cache oder PCIe-Verbindungen.
-  typische_ursachen:
-    - Arbeitsspeicher mit beginnenden Fehlern
-    - PCIe-Verbindung mit Uebertragungsfehlern
-    - Uebertaktung oder grenzwertige Spannungen
-    - Temperatur
-  empfohlene_checks:
-    - Haeufigkeit ueber die Zeit ansehen - steigende Rate ist das eigentliche Signal.
-    - Betroffene Komponente aus den Ereignisdaten bestimmen.
-    - BIOS/UEFI- und Firmware-Stand pruefen.
+  severity: warning
+  meaning: >
+    The hardware reported an error and corrected it itself. A single one is
+    unremarkable; in series it is an early warning, usually for memory, the
+    processor cache or PCIe links.
+  typical_causes:
+    - Memory starting to fail
+    - PCIe link with transmission errors
+    - Overclocking or borderline voltages
+    - Temperature
+  recommended_checks:
+    - Look at the frequency over time - a rising rate is the real signal.
+    - Determine the affected component from the event data.
+    - Check BIOS/UEFI and firmware versions.
   threshold:
     count_min: 1
     escalate_above: 25
-    escalate_to: fehler
+    escalate_to: error
 
-- id: whea-nicht-korrigiert
-  name: Nicht korrigierter Hardwarefehler (WHEA-Logger 18/47)
+- id: whea-uncorrected
+  name: Uncorrected hardware error (WHEA-Logger 18/47)
   match:
     channel: System
     provider: Microsoft-Windows-WHEA-Logger
     event_id: [18, 47]
-  severity: kritisch
-  bedeutung: >
-    Die Hardware hat einen Fehler gemeldet, den sie nicht korrigieren konnte.
-    Das fuehrt in aller Regel zu einem Stoppfehler.
-  typische_ursachen:
-    - Defekter Arbeitsspeicher
-    - Prozessor- oder Mainboardfehler
-    - Instabile Spannungsversorgung
-  empfohlene_checks:
-    - Zeitliche Naehe zu BugCheck 1001 pruefen.
-    - Arbeitsspeichertest, danach Komponententausch.
+  severity: critical
+  meaning: >
+    The hardware reported an error it could not correct. As a rule this leads
+    to a stop error.
+  typical_causes:
+    - Defective memory
+    - Processor or mainboard fault
+    - Unstable power supply
+  recommended_checks:
+    - Check for closeness in time to BugCheck 1001.
+    - Memory test, then component replacement.
 
 - id: kernel-pnp-219
-  name: Treiber nicht geladen (Kernel-PnP 219)
+  name: Driver not loaded (Kernel-PnP 219)
   match:
     channel: [System, Microsoft-Windows-Kernel-PnP/Configuration]
     provider: Microsoft-Windows-Kernel-PnP
     event_id: 219
-  severity: warnung
-  bedeutung: >
-    Ein Treiber konnte fuer ein Geraet nicht geladen werden. Das Geraet bleibt
-    damit ganz oder teilweise funktionslos.
-  typische_ursachen:
-    - Treiber fehlt, ist beschaedigt oder passt nicht zur Windows-Version
-    - Signaturpruefung schlaegt fehl
-    - Geraet meldet sich fehlerhaft an
-  empfohlene_checks:
-    - Geraet im Geraete-Manager suchen und Fehlercode notieren.
-    - setupapi.dev.log auf zugehoerige Fehlerzeilen ansehen (--log-files).
-    - Zeitliche Naehe zu einem Windows-Update pruefen.
+  severity: warning
+  meaning: >
+    A driver could not be loaded for a device. The device therefore remains
+    fully or partially non-functional.
+  typical_causes:
+    - Driver missing, damaged or not matching the Windows version
+    - Signature check fails
+    - Device registers itself incorrectly
+  recommended_checks:
+    - Find the device in Device Manager and note the error code.
+    - Look at setupapi.dev.log for related error lines (collect.log_files).
+    - Check for closeness in time to a Windows update.
 
-- id: windowsupdate-fehler
-  name: Update fehlgeschlagen (WindowsUpdateClient 20/25/31)
+- id: windowsupdate-failure
+  name: Update failed (WindowsUpdateClient 20/25/31)
   match:
     channel: Microsoft-Windows-WindowsUpdateClient/Operational
     provider: Microsoft-Windows-WindowsUpdateClient
     event_id: [20, 25, 31]
-  severity: warnung
-  bedeutung: >
-    Ein Update konnte nicht installiert oder heruntergeladen werden.
-  typische_ursachen:
-    - Komponentenspeicher beschaedigt
-    - Zu wenig freier Speicherplatz
-    - Netzwerk- oder Proxyproblem
-    - Konflikt mit Sicherheitssoftware
-  empfohlene_checks:
-    - CBS.log auf Fehlerzeilen ansehen (--log-files).
-    - Freien Speicherplatz auf der Systempartition pruefen.
-    - Wiederholt sich derselbe Update-Fehler? Dann ist es kein Zufallsproblem.
+  severity: warning
+  meaning: >
+    An update could not be installed or downloaded.
+  typical_causes:
+    - Component store damaged
+    - Too little free disk space
+    - Network or proxy problem
+    - Conflict with security software
+  recommended_checks:
+    - Look at CBS.log for error lines (collect.log_files).
+    - Check free space on the system partition.
+    - Does the same update error repeat? Then it is not a random problem.

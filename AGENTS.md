@@ -1,177 +1,203 @@
-# AGENTS.md — WinEventAI
+# AGENTS.md - WinEventAI
 
-Diese Datei ist der Arbeitsvertrag fuer jedes KI-Modell, das an diesem Projekt
-weiterbaut. Lies sie vollstaendig, bevor du die erste Datei anfasst.
-Ausfuehrlicher Stand, Begruendungen und offene Punkte: `HANDOVER.md`.
+This file is the working contract for every AI model that continues building
+this project. Read it completely before you touch the first file.
+Detailed state, rationale and open items: `HANDOVER.md`.
 
 ---
 
-## 1. Rolle und Arbeitsweise
+## 1. Role and way of working
 
-Du bist Senior-Softwarearchitekt, kein Codegenerator. Konkret:
+You are a senior software architect, not a code generator. Concretely:
 
-- **Widersprich.** Wenn eine Anforderung technisch fragwuerdig ist, sag das und
-  begruende es, statt sie umzusetzen. Das ist ausdruecklich erwuenscht.
-- **Erfinde nichts.** Wenn du etwas nicht sicher weisst — ob ein Cmdlet auf
-  Server 2019 existiert, ob ein Feld lokalisiert ist —, schreib hin, dass es
-  unbestaetigt ist. Plausibel klingende Erfindungen sind in einem
-  Diagnosewerkzeug der teuerste Fehler.
-- **Vollstaendiger Code.** Keine `# TODO: implementieren`, keine Auslassungen,
-  keine `...`-Platzhalter.
-- **Modul fuer Modul.** Ein Modul samt Tests, dann anhalten und vorlegen.
-  Nicht acht Dateien auf einmal.
-- **Jede Entscheidung bekommt ihren Grund.** Die Docstrings in diesem Projekt
-  erklaeren nicht, *was* der Code tut, sondern *warum er so und nicht anders*
-  gebaut ist. Halte das durch — es ist der eigentliche Wert der Codebasis.
+- **Object.** If a requirement is technically questionable, say so and give
+  the reason instead of implementing it. That is explicitly wanted.
+- **Invent nothing.** If you do not know something for sure - whether a cmdlet
+  exists on Server 2019, whether a field is localized - write down that it is
+  unconfirmed. Plausible-sounding inventions are the most expensive error in a
+  diagnostic tool.
+- **Complete code.** No `# TODO: implement`, no omissions, no `...`
+  placeholders.
+- **Module by module.** One module with its tests, then stop and present it.
+  Not eight files at once.
+- **Every decision gets its reason.** The docstrings in this project do not
+  explain *what* the code does but *why it is built this way and not
+  otherwise*. Keep that up - it is the actual value of the code base.
 
-## 2. Was das Programm ist
+## 2. What the program is
 
-Lokales Windows-Diagnosewerkzeug. Liest Ereignisprotokolle und weitere
-Systemquellen, verdichtet sie technisch, triagiert regelbasiert und laesst
-danach ein **lokales** Sprachmodell (Ollama) Ursachenhypothesen,
-Risikoeinschaetzung und Empfehlungen formulieren.
+Local Windows diagnostic tool. Reads event logs and further system sources,
+condenses them technically, triages them by rules and then optionally lets a
+**local** language model (Ollama) formulate cause hypotheses, a risk
+assessment and recommendations.
 
-Zielgruppe: 1st/2nd-Level-Support und Sicherheitspersonal, die Event-IDs lesen
-koennen, aber keine 40 Minuten pro Fall haben.
+**Ollama is optional.** Without it every command works and every report is
+complete - it is built from the rule engine. Never make a code path depend on
+the model being present.
 
-## 3. Harte Rahmenbedingungen — nicht verhandelbar
+Target group: 1st/2nd level support and security staff who can read event ids
+but do not have 40 minutes per case.
 
-| Regel | Bedeutung |
+## 3. Hard constraints - not negotiable
+
+| Rule | Meaning |
 |---|---|
 | Python 3.11+ | Windows 10/11, Server 2019/2022 |
-| Erhebung ueber PowerShell | `Get-WinEvent` mit FilterHashtable/XPath, als Subprozess, Rueckgabe NDJSON |
-| Sprachmodell lokal | Ollama HTTP-API auf `http://localhost:11434` |
-| **Kein Cloud-Aufruf** | ausser bei ausdruecklichem Opt-in `ai.allow_cloud: true` in der Konfigurationsdatei |
-| **Read-only** | Das Werkzeug repariert NICHTS. Ein Fix erscheint nur als Vorschlag: Befehl, erwartete Wirkung, Risiko, Rollback |
-| **Vollstaendig offline** | ausser dem einmaligen Modell-Download |
-| Keine Bezahldienste, keine Telemetrie | gilt auch fuer Sonden: kein Speedtest gegen einen Internet-Dienst |
-| Konfiguration in YAML | keine Stellschraube im Code |
+| Collection via PowerShell | `Get-WinEvent` with FilterHashtable/XPath, as subprocess, NDJSON output |
+| Language model local and optional | Ollama HTTP API at `http://localhost:11434`; without it: rules only |
+| **No cloud call** | except with explicit opt-in `ai.allow_cloud: true` in the configuration file - this also covers cloud models a local Ollama forwards (`*:cloud`) |
+| **Read-only** | The tool repairs NOTHING. A fix only appears as a suggestion: command, expected effect, risk, rollback |
+| **Fully offline** | except the one-time model download |
+| No paid services, no telemetry | also applies to probes: no speed test against an internet service |
+| Configuration in YAML | no tuning knob in the code |
 
-**Nicht-Ziele v1:** keine automatische Reparatur, kein Minidump-Parser, kein
-Agent/keine Flottenverwaltung, keine Live-Ueberwachung, keine Cloud, kein
-Machine Learning ausser dem Sprachmodell.
+**Non-goals v2:** no automatic repair, no minidump parser, no agent/fleet
+management, no live monitoring, no cloud, no machine learning apart from the
+language model.
 
-## 4. Sprachkonvention
+## 4. Language convention
 
-- **Bezeichner auf Englisch**: Klassen, Funktionen, Variablen, Felder.
-- **Kommentare, Docstrings und alle sichtbaren Texte auf Deutsch.**
-- **Keine Umlaute im Quelltext.** Durchgaengig `ae oe ue ss`. Grund: gemischte
-  Kodierungen zwischen PowerShell, Konsole und Datei. Halte das ein, auch wenn
-  es haesslich aussieht.
-- Pydantic-Feldnamen in `to_public_dict()` sind deutsch (`befund_id`,
-  `zeitvorbehalt`) — das ist die Berichtsschnittstelle, nicht das Modell.
+- **Everything in English** since 2.0: identifiers, comments, docstrings,
+  user-visible texts, reports, prompts, documentation.
+- **No umlauts or other non-ASCII in source code.** Reason: mixed encodings
+  between PowerShell, console and file.
+- **Exceptions, deliberately German:** `auditpol` subcategory names in
+  `security/audit_policy.py` (they are what a German Windows prints) and the
+  Windows messages in `tests/fixtures/ndjson` (they prove nothing depends on
+  localized text).
+- Compatibility with 1.x data (German status values, rule fields, KB columns)
+  is kept by `_missing_` on the enums, `model_validator(mode="before")` on
+  `RuleDefinition`/`KbEntry` and `kb.store._migrate_legacy_schema`. Do not
+  remove these without a major version.
 
-## 5. Befehle
+## 5. Commands
 
 ```bash
-pip install -e ".[dev]"      # Entwicklung (PySide6 inklusive)
-pip install -e ".[gui]"      # nur Oberflaeche
-python -m pytest -q          # 243 Tests, muessen alle gruen sein
-ruff check src/ tests/       # muss sauber sein
+pip install -e ".[dev]"      # development (PySide6 included)
+pip install -e ".[gui]"      # user interface only
+python -m pytest -q          # 257 tests, all must be green
+ruff check src/ tests/       # must be clean
 ```
 
-Unter Windows: `install.ps1` im Projektordner (entfernt eine vorhandene
-Installation zuerst — sonst zeigt pip weiter auf den alten Ordner).
+On Windows: `install.ps1` in the project folder (removes an existing
+installation first - otherwise pip keeps pointing to the old folder).
+Release: `packaging\build.ps1` (tests, linter, PyInstaller one-dir, ZIP,
+SHA-256).
 
 CLI: `collect | analyze | run | report | evidence | doctor | gui |
-kb {list,search,unknown,reseed,stats} | config {init,path,show}`
+kb {list,search,stats,unknown,reseed} | config {init,path,show}`
 
-## 6. Modulkarte
+## 6. Module map
 
 ```
 src/wineventai/
-  collect/     Erhebung. PowerShell-Skripte in collect/scripts/*.ps1
-  normalize/   EventRecord-Schema, Maskierung fuer den Fingerprint
-  enrich/      Dedup, Burst, Boot-Sessions, Korrelation, Retention
-  rules/       YAML-Regeln + deterministische Engine (6 Dateien, 30 Regeln)
-  kb/          Wissensbasis (SQLite), unknown_ids.csv
-  ai/          Ollama-Client, Bundles, Redaction, Belegpruefung
-  probes/      Kontext-Sonden + probes/scripts/*.ps1
-  report/      HTML (Jinja2) / Markdown / JSON aus EINEM Modell
-  security/    Sicherheitsmodus, Audit-Policy, Blindstellen
-  gui/         PySide6, enthaelt KEINE Diagnoselogik
-  analyze.py   Die Pipeline-Verdrahtung
+  collect/     Collection. PowerShell scripts in collect/scripts/*.ps1,
+               including the error sweep (sweep.py, sweep_errors.ps1)
+  normalize/   EventRecord schema, masking for the fingerprint
+  enrich/      Dedup, burst, boot sessions, correlation, retention
+  rules/       YAML rules + deterministic engine (6 files, 30 rules)
+  kb/          Knowledge base (SQLite), unknown_ids.csv
+  ai/          Ollama client, cloud guard, bundles, redaction, evidence check
+  probes/      Context probes + probes/scripts/*.ps1
+  report/      HTML (Jinja2) / Markdown / JSON from ONE model
+  security/    Security mode, audit policy, blind spots
+  gui/         PySide6, contains NO diagnostic logic
+  analyze.py   The pipeline wiring
   cli.py       Typer
-  resources.py Einziger Ort, der PyInstaller-Pfade kennt
+  resources.py The only place that knows PyInstaller paths
 ```
 
-Reihenfolge der Pipeline:
+Order of the pipeline:
 `collect -> normalize -> enrich -> rules -> kb -> ai -> probes -> report`
 
-## 7. Die zehn Regeln, die du nicht brechen darfst
+## 7. The ten rules you must not break
 
-1. **Das Laufverzeichnis ist die Pipeline-Grenze.** Der Collector schreibt
-   `raw/*.ndjson`; alles danach liest ausschliesslich von dort. Niemals ein
-   Modul ab `normalize` direkt auf Windows zugreifen lassen.
-2. **Niemals `ConvertTo-Json` auf die ganze Pipeline.** Immer
-   `ForEach-Object { ... | ConvertTo-Json -Compress -Depth 4 }`, eine Zeile je
-   Record. Sonst baut PowerShell erst das gesamte Array im Speicher.
-3. **Niemals auf lokalisierten Text matchen.** Windows uebersetzt
-   `LevelDisplayName`, `TaskDisplayName`, Fehlermeldungen. Benutze numerische
-   Werte und .NET-**Typnamen** (`$_.Exception.GetType().FullName`).
-   Ausnahme nur dort, wo das Skript gar nicht erst laeuft
-   (`status_from_stderr`), und dann gegen sprachneutrale Bezeichner.
-4. **"Keine Befunde" und "nicht erhoben" duerfen nie gleich aussehen.**
-   `SourceStatus` hat 10 Zustaende; `EMPTY`, `NOT_LOGGED`, `NO_PERMISSION`,
-   `TIMED_OUT`, `TRUNCATED`, `BLOCKED` sind streng getrennt. Die
-   Abdeckungstabelle steht im Bericht VOR den Befunden.
-5. **Das Zeitfenster wird nie still verkleinert.** Wenn zu viele Daten kommen,
-   wird die Zahl *behaltener* Rohdaten begrenzt (`max_retained_per_channel`),
-   nie der Zeitraum. Ueber 5 Mio. Records: harter Abbruch mit Meldung.
-   Aggregate und Zaehler sind von der Retention unberuehrt.
-6. **Der Fingerprint haengt am Property-Vektor, nicht am Meldungstext.**
-   `provider + event_id + event_version + hash(maskierter Property-Vektor)`.
-   Meldungstext nur als Ersatz, und das wird im Fingerprint kenntlich gemacht
+1. **The run directory is the pipeline boundary.** The collector writes
+   `raw/*.ndjson`; everything after it reads exclusively from there. Never let
+   a module from `normalize` onward access Windows directly.
+2. **Never `ConvertTo-Json` on the whole pipeline.** Always
+   `ForEach-Object { ... | ConvertTo-Json -Compress -Depth 4 }`, one line per
+   record. Otherwise PowerShell first builds the whole array in memory.
+3. **Never match on localized text.** Windows translates `LevelDisplayName`,
+   `TaskDisplayName`, error messages. Use numeric values, .NET **type names**
+   (`$_.Exception.GetType().FullName`) and `FullyQualifiedErrorId`. Exception
+   only where the script does not run at all (`status_from_stderr`), and then
+   against language-neutral identifiers.
+4. **"No findings" and "not collected" must never look alike.**
+   `SourceStatus` has 10 states; `EMPTY`, `NOT_AVAILABLE`, `NOT_LOGGED`,
+   `NO_PERMISSION`, `TIMED_OUT`, `TRUNCATED`, `BLOCKED`, `FAILED` are strictly
+   separate. A script without a closing status line is `FAILED`, never
+   `EMPTY`. The coverage table comes BEFORE the findings in the report.
+5. **The time window is never shrunk silently.** If too much data arrives,
+   the number of *retained* raw records is capped
+   (`max_retained_per_channel`), never the period. Above 5 million records:
+   hard abort with a message. Aggregates and counters are untouched by
+   retention.
+6. **The fingerprint hangs on the property vector, not the message text.**
+   `provider + event_id + event_version + hash(masked property vector)`.
+   Message text only as a fallback, and that is marked in the fingerprint
    (`p…` vs. `m…`).
-7. **Event-IDs sind nur je Provider eindeutig.** Jeder Schluessel ist
-   `(provider, event_id)`. Der Regel-Validator lehnt Regeln ohne `provider` ab.
-   Baue nie einen Lookup allein ueber die ID.
-8. **Nichts geht in den Prompt, was die Belegpruefung nicht nachpruefen kann.**
-   Modellaussagen tragen strukturierte `evidence`-Felder; eine Aussage ohne
-   Deckung wird einzeln verworfen, nicht die ganze Antwort. Sondenergebnisse
-   gehen deshalb NICHT ins Bundle.
-9. **Ein leeres Feld ist eine Einladung zur Fehldeutung.** Fehlende Messungen,
-   abgeschaltete Sonden, fehlende KB-Bedeutung bekommen einen sichtbaren
-   Vermerk — nie nichts.
-10. **Die GUI enthaelt keine Diagnoselogik.** Sie ruft dieselben Funktionen wie
-    die CLI. Sonst debuggt man am Ende zwei Werkzeuge.
+7. **Event ids are only unique per provider.** Every key is
+   `(provider, event_id)`. The rule validator rejects rules without
+   `provider`. Never build a lookup on the id alone.
+8. **Nothing goes into the prompt that the evidence check cannot verify.**
+   Model statements carry structured `evidence` fields; a statement without
+   cover is rejected individually, not the whole answer. That is why probe
+   results do NOT go into the bundle.
+9. **An empty field is an invitation to misinterpretation.** Missing
+   measurements, disabled probes, missing KB meaning, a missing language model
+   get a visible note - never nothing.
+10. **The GUI contains no diagnostic logic.** It calls the same functions as
+    the CLI. Otherwise one ends up debugging two tools.
 
-## 8. Fallen, die hier schon einmal zugeschnappt sind
+## 8. Traps that have already snapped shut here
 
-- **YAML:** Ein Listeneintrag mit `": "` wird als Mapping geparst.
-  `- Bei mehreren Rechnern: pruefen.` muss in Anfuehrungszeichen.
-- **Burst-Erkennung:** Basislinie ist die Dichte ueber das **ganze**
-  Analysefenster, nicht der Median der belegten Stunden. Sonst versteckt sich
-  ein Ausreisser hinter sich selbst.
-- **Retention:** Rauschregeln duerfen nicht als Prioritaet 1 zaehlen, sonst
-  fuellt 1400× DCOM 10016 das Kontingent.
-- **`urllib` beachtet `HTTP_PROXY` auch fuer localhost.** Der Ollama-Client
-  installiert deshalb `ProxyHandler({})` fuer lokale Adressen.
-- **`/api/show` mit fehlendem Modell liefert 404** — das ist "Modell fehlt",
-  nicht "Ollama nicht erreichbar". Getrennt in `OllamaStatus`.
-- **PyInstaller: one-dir, nicht one-file.** One-file entpackt bei jedem Start
-  nach `%TEMP%` und sieht fuer EDR nach Packer-Verhalten aus.
-- **PowerShell-Aufruf ueber `-File`, nie `-EncodedCommand`.** Base64-PowerShell
-  ist eine der auffaelligsten EDR-Signaturen — fuer ein Werkzeug, das
-  Sicherheitsprotokolle liest, das denkbar schlechteste Bild.
-- **PS 5.1 vs. 7:** `Test-Connection` liefert `Win32_PingStatus.ResponseTime`
-  bzw. `PingStatus.Latency`. Deshalb `System.Net.NetworkInformation.Ping`
-  direkt. Gleiche Klasse Falle bei der DateTime-Serialisierung — im Skript
-  selbst formatieren.
-- **Qt-Rich-Text** ist HTML 4: kein Flexbox, kein Grid, kein externes CSS,
-  `border-left` ausserhalb von Tabellen wird nicht gezeichnet.
-- **PySide6 (LGPL), nicht PyQt (GPL).** Bei interner Weitergabe ist das der
-  Unterschied zwischen unkritisch und lizenzpflichtig.
+- **YAML:** a list entry containing `": "` is parsed as a mapping.
+  `- With several machines: check.` must be quoted.
+- **Lists into PowerShell scripts:** pass ONE `|`-separated string
+  (`shell.join_list_arg`). `-EventIds "1,2"` into `[int[]]` fails via `-File`
+  under PS 5.1, `-Role a,b` arrives as one element.
+- **Burst detection:** the baseline is the density over the **whole** analysis
+  window, not the median of occupied hours. Otherwise an outlier hides behind
+  itself.
+- **Retention:** noise rules must not count as priority 1, otherwise 1400×
+  DCOM 10016 fills the quota.
+- **`urllib` honours `HTTP_PROXY` for localhost too.** The Ollama client
+  therefore installs `ProxyHandler({})` for local addresses.
+- **`/api/show` with a missing model returns 404** - that is "model missing",
+  not "Ollama unreachable". Separated in `OllamaStatus`.
+- **A model under `localhost` can still be a cloud model.** `/api/tags`
+  entries with `remote_host` or a `:cloud` name are refused without
+  `allow_cloud`.
+- **PyInstaller: one-dir, not one-file.** One-file unpacks to `%TEMP%` on
+  every start and looks like packer behavior to EDR. `__main__.py` must use
+  absolute imports - PyInstaller runs it as a script.
+- **PowerShell call via `-File`, never `-EncodedCommand`.** Base64 PowerShell
+  is one of the most conspicuous EDR signatures - for a tool that reads
+  security logs the worst possible image.
+- **PS 5.1 vs. 7:** `Test-Connection` returns `Win32_PingStatus.ResponseTime`
+  resp. `PingStatus.Latency`. Hence `System.Net.NetworkInformation.Ping`
+  directly. Same class of trap with DateTime serialization - format in the
+  script itself.
+- **`Get-WinEvent -ListLog * -ErrorAction Stop`** aborts without admin rights
+  at the first unreadable channel. Check names individually.
+- **Qt rich text** is HTML 4: no flexbox, no grid, no external CSS,
+  `border-left` outside tables is not painted.
+- **`QStyledItemDelegate.paint`** refills the text itself; painting the text
+  yourself afterwards draws it twice.
+- **PySide6 (LGPL), not PyQt (GPL).** For internal distribution that is the
+  difference between uncritical and licence-bound.
 
-## 9. Testregeln
+## 9. Test rules
 
-- Tests laufen **ohne Windows und ohne Netz**. `tests/conftest.py` blockiert
-  Sockets per Autouse-Fixture (`NetworkAccessInTest`).
-- Jede Schicht hat eine reine Auswertefunktion als Testgrenze:
-  `collect.shell.read_ndjson` und `probes.shell.read_payloads` kennen nur einen
-  Zeilen-Iterator und nichts von Prozessen.
-- **Testnamen sind Saetze auf Deutsch** und beschreiben die Aussage, nicht die
-  Funktion: `test_burst_erkennt_konzentration_in_einer_einzigen_stunde`.
-- Importe in Tests: `from helpers import ...`, nicht `from .conftest import`.
-- Was sich nur auf echtem Windows beweisen laesst — die neun `.ps1`-Dateien —
-  ist nicht getestet und steht als offener Punkt in `HANDOVER.md`.
+- Tests run **without Windows and without network**. `tests/conftest.py`
+  blocks sockets via an autouse fixture (`NetworkAccessInTest`).
+- Every layer has a pure evaluation function as test boundary:
+  `collect.shell.read_ndjson`, `collect.sweep.parse_sweep` and
+  `probes.shell.read_payloads` only know a line iterator and nothing of
+  processes.
+- **Test names are English sentences** and describe the statement, not the
+  function: `test_burst_detects_concentration_in_one_single_hour`.
+- Imports in tests: `from helpers import ...`, not `from .conftest import`.
+- What can only be proven on real Windows - the `.ps1` files - is not tested
+  and is listed as an open item in `HANDOVER.md`.

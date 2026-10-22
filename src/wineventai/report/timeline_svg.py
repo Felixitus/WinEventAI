@@ -1,8 +1,8 @@
-"""Zeitleiste als Inline-SVG.
+"""Timeline as inline SVG.
 
-Keine JavaScript-Bibliothek und kein CDN: Der Bericht muss offline funktionieren,
-und eine HTML-Datei, die beim Oeffnen ins Netz greift, ist auf einem untersuchten
-Rechner das falsche Signal. Das SVG wird deshalb hier in Python gezeichnet.
+No JavaScript library and no CDN: the report must work offline, and an HTML
+file that reaches into the network when opened is the wrong signal on a machine
+under examination. The SVG is therefore drawn here in Python.
 """
 
 from __future__ import annotations
@@ -22,11 +22,11 @@ LANE_Y = 96
 LANE_HEIGHT = 26
 
 SEVERITY_COLOR: dict[Severity, str] = {
-    Severity.KRITISCH: "#a52218",
-    Severity.FEHLER: "#b4551a",
-    Severity.WARNUNG: "#8a6a12",
+    Severity.CRITICAL: "#a52218",
+    Severity.ERROR: "#b4551a",
+    Severity.WARNING: "#8a6a12",
     Severity.INFO: "#3a5a86",
-    Severity.RAUSCHEN: "#78757f",
+    Severity.NOISE: "#78757f",
 }
 
 
@@ -46,19 +46,19 @@ def render_timeline(
     window_to: datetime,
     covered_from: datetime | None = None,
 ) -> str:
-    """Zeichnet die Zeitleiste eines Laufs.
+    """Draws the timeline of a run.
 
-    Der nicht abgedeckte Teil des Fensters wird schraffiert dargestellt - er ist
-    keine ereignislose Zeit, sondern ungelesene Zeit, und das muss man sehen.
+    The uncovered part of the window is hatched - it is not event-free time but
+    unread time, and that has to be visible.
     """
     if window_to <= window_from:
         return ""
 
     parts: list[str] = [
         f'<svg viewBox="0 0 {WIDTH} {HEIGHT}" width="100%" '
-        f'role="img" aria-label="Zeitleiste des untersuchten Zeitraums" '
+        f'role="img" aria-label="Timeline of the examined period" '
         f'xmlns="http://www.w3.org/2000/svg" class="timeline">',
-        '<defs><pattern id="ungelesen" width="8" height="8" patternUnits="userSpaceOnUse" '
+        '<defs><pattern id="unread" width="8" height="8" patternUnits="userSpaceOnUse" '
         'patternTransform="rotate(45)">'
         '<rect width="8" height="8" fill="var(--surface-sunk)"/>'
         '<line x1="0" y1="0" x2="0" y2="8" stroke="var(--rule-strong)" stroke-width="2"/>'
@@ -76,11 +76,11 @@ def render_timeline(
         gap_end = _x_for(covered_from, window_from, window_to)
         parts.append(
             f'<rect x="{MARGIN_LEFT}" y="{LANE_Y}" width="{max(gap_end - MARGIN_LEFT, 0):.1f}" '
-            f'height="{LANE_HEIGHT}" fill="url(#ungelesen)"/>'
+            f'height="{LANE_HEIGHT}" fill="url(#unread)"/>'
         )
         parts.append(
             f'<text x="{MARGIN_LEFT + 4}" y="{LANE_Y - 6}" class="tl-label">'
-            f"nicht erhoben</text>"
+            f"not collected</text>"
         )
 
     parts.append(
@@ -89,11 +89,11 @@ def render_timeline(
     )
     parts.append(
         f'<text x="{MARGIN_LEFT}" y="{axis_y + 16}" class="tl-label">'
-        f"{escape(window_from.strftime('%d.%m. %H:%M'))} UTC</text>"
+        f"{escape(window_from.strftime('%Y-%m-%d %H:%M'))} UTC</text>"
     )
     parts.append(
         f'<text x="{WIDTH - MARGIN_RIGHT}" y="{axis_y + 16}" text-anchor="end" class="tl-label">'
-        f"{escape(window_to.strftime('%d.%m. %H:%M'))} UTC</text>"
+        f"{escape(window_to.strftime('%Y-%m-%d %H:%M'))} UTC</text>"
     )
 
     drawn = 0
@@ -107,7 +107,7 @@ def render_timeline(
                 f'<line x1="{x:.1f}" y1="{LANE_Y - 8}" x2="{x:.1f}" '
                 f'y2="{LANE_Y + LANE_HEIGHT + 8}" stroke="{color}" stroke-width="2">'
                 f"<title>{escape(finding.rule_name)} — "
-                f"{escape(sample.timestamp_utc.strftime('%d.%m.%Y %H:%M:%S'))} UTC</title>"
+                f"{escape(sample.timestamp_utc.strftime('%Y-%m-%d %H:%M:%S'))} UTC</title>"
                 f"</line>"
             )
             drawn += 1
@@ -117,7 +117,7 @@ def render_timeline(
             break
 
     legend_x = MARGIN_LEFT
-    for severity in (Severity.KRITISCH, Severity.FEHLER, Severity.WARNUNG, Severity.INFO):
+    for severity in (Severity.CRITICAL, Severity.ERROR, Severity.WARNING, Severity.INFO):
         parts.append(
             f'<rect x="{legend_x}" y="{HEIGHT - 24}" width="10" height="10" '
             f'fill="{SEVERITY_COLOR[severity]}"/>'

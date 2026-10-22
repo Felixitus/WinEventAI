@@ -1,21 +1,21 @@
-"""Kontext-Sonden: gemeinsame Begriffe.
+"""Context probes: shared vocabulary.
 
-Eine Sonde misst den aktuellen Zustand eines Systems, um einen Befund zu
-erklaeren oder zu entkraeften. Sie ist kein freistehendes Werkzeug: Jede Sonde
-haengt an einem Befund und erscheint in dessen Karte.
+A probe measures the current state of a system to explain or refute a finding.
+It is not a free-standing tool: every probe hangs on a finding and appears in
+that finding's card.
 
-**Der Vorbehalt, der jede Sonde begleitet.** Eine Sonde misst JETZT. Der Befund
-entstand DAMALS. Ein Ping, der heute durchgeht, sagt nichts ueber eine
-Namensaufloesung, die vor fuenf Tagen in eine Zeitueberschreitung lief. Deshalb
-ist der Zeitabstand ein Feld im Modell und kein Textbaustein - genau wie
-"nicht protokolliert" beim Sicherheitsmodus ein Status ist und keine Fussnote.
-Wer eine gruene Sonde als Entwarnung liest, zieht sonst denselben falschen
-Schluss wie bei "keine Befunde" auf einem nicht erhobenen Kanal.
+**The caveat that accompanies every probe.** A probe measures NOW. The finding
+arose BACK THEN. A ping that succeeds today says nothing about a name
+resolution that ran into a timeout five days ago. The time gap is therefore a
+field in the model and not a text snippet - just as "not logged" in security
+mode is a status and not a footnote. Whoever reads a green probe as all-clear
+otherwise draws the same wrong conclusion as with "no findings" on a channel
+that was never collected.
 
-Alle Sonden sind read-only und bleiben im lokalen Netz. Kein Speedtest gegen
-einen Internet-Dienst: Der braeche "offline lauffaehig", "keine Telemetrie"
-(die eigene IP ginge an den Anbieter) und "read-only" (er saettigt die Leitung
-und erzeugt auf einem gestoerten Rechner genau die Stoerung, die man sucht).
+All probes are read-only and stay within the local network. No speed test
+against an internet service: it would break "works offline", "no telemetry"
+(the own IP would go to the provider) and "read-only" (it saturates the line
+and produces on a troubled machine exactly the disturbance one is looking for).
 """
 
 from __future__ import annotations
@@ -27,27 +27,28 @@ from typing import TYPE_CHECKING, Protocol
 from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:  # pragma: no cover
-    # Absichtlich nur zur Typpruefung: ``rules.engine`` importiert ``ProbeResult``,
-    # um es an den Befund zu haengen. Ein Laufzeitimport in die Gegenrichtung
-    # waere ein Zirkel. Die Sonden brauchen ``Finding`` ohnehin nur als
-    # Typangabe - dank ``from __future__ import annotations`` bleibt sie Text.
+    # Deliberately for type checking only: ``rules.engine`` imports
+    # ``ProbeResult`` to attach it to the finding. A runtime import in the
+    # other direction would be a cycle. The probes only need ``Finding`` as a
+    # type annotation anyway - thanks to ``from __future__ import annotations``
+    # it stays text.
     from ..rules.engine import Finding
 
 
 class ProbeStatus(StrEnum):
-    OK = "unauffaellig"
-    WARN = "auffaellig"
-    FAILED = "fehlgeschlagen"
-    NOT_APPLICABLE = "nicht anwendbar"
-    NO_PERMISSION = "keine rechte"
-    TIMED_OUT = "abgebrochen"
-    DISABLED = "abgeschaltet"
-    UNAVAILABLE = "nicht messbar"
+    OK = "unremarkable"
+    WARN = "conspicuous"
+    FAILED = "failed"
+    NOT_APPLICABLE = "not applicable"
+    NO_PERMISSION = "no permission"
+    TIMED_OUT = "timed out"
+    DISABLED = "disabled"
+    UNAVAILABLE = "not measurable"
 
 
-#: Zustaende, in denen die Sonde nichts ausgesagt hat. Ein "unauffaellig" ist
-#: eine Messung; alles hier ist das Fehlen einer Messung - und das darf im
-#: Bericht nie wie eine Entwarnung aussehen.
+#: States in which the probe said nothing. "unremarkable" is a measurement;
+#: everything here is the absence of a measurement - and that must never look
+#: like an all-clear in the report.
 NO_MEASUREMENT: frozenset[ProbeStatus] = frozenset(
     {
         ProbeStatus.FAILED,
@@ -61,15 +62,15 @@ NO_MEASUREMENT: frozenset[ProbeStatus] = frozenset(
 
 
 class ProbeBearing(StrEnum):
-    """Was die Messung fuer den Befund bedeutet."""
+    """What the measurement means for the finding."""
 
-    SUPPORTS = "stuetzt den Befund"
-    WEAKENS = "spricht dagegen"
-    INCONCLUSIVE = "sagt dazu nichts"
+    SUPPORTS = "supports the finding"
+    WEAKENS = "speaks against it"
+    INCONCLUSIVE = "says nothing about it"
 
 
 class ProbeResult(BaseModel):
-    """Das Ergebnis einer Messung, bezogen auf einen Befund."""
+    """The result of a measurement, related to a finding."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -88,108 +89,108 @@ class ProbeResult(BaseModel):
 
     @property
     def measured(self) -> bool:
-        """True, wenn tatsaechlich gemessen wurde."""
+        """True if something was actually measured."""
         return self.status not in NO_MEASUREMENT
 
     @property
     def age(self) -> timedelta | None:
-        """Abstand zwischen Messung und letztem Vorkommen des Befunds."""
+        """Gap between the measurement and the last occurrence of the finding."""
         if self.finding_last_seen_utc is None:
             return None
         return self.measured_utc - self.finding_last_seen_utc
 
     def age_note(self) -> str:
-        """Der Zeitvorbehalt im Klartext.
+        """The time caveat in plain text.
 
-        Steht in jeder Darstellung einer Sonde. Je groesser der Abstand, desto
-        deutlicher die Formulierung - bei mehreren Tagen ist die Messung fuer
-        den Befund praktisch wertlos, und das soll dastehen.
+        Appears in every representation of a probe. The larger the gap, the
+        clearer the wording - after several days the measurement is practically
+        worthless for the finding, and that should be stated.
         """
-        abstand = self.age
-        if abstand is None:
-            return "Gemessen jetzt; ein Bezug zum Zeitpunkt des Befunds ist nicht belegt."
+        gap = self.age
+        if gap is None:
+            return "Measured now; a relation to the time of the finding is not established."
 
-        stunden = abstand.total_seconds() / 3600.0
-        if stunden < 1:
-            return "Gemessen kurz nach dem letzten Vorkommen."
-        if stunden < 24:
+        hours = gap.total_seconds() / 3600.0
+        if hours < 1:
+            return "Measured shortly after the last occurrence."
+        if hours < 24:
             return (
-                f"Gemessen {stunden:.0f} Stunden nach dem letzten Vorkommen - "
-                "der Zustand kann sich seitdem geaendert haben."
+                f"Measured {hours:.0f} hours after the last occurrence - "
+                "the state may have changed since."
             )
-        tage = stunden / 24.0
+        days = hours / 24.0
         return (
-            f"Gemessen {tage:.0f} Tage nach dem letzten Vorkommen. Ueber den "
-            "Zustand zum Zeitpunkt des Befunds sagt diese Messung nichts."
+            f"Measured {days:.0f} days after the last occurrence. This measurement "
+            "says nothing about the state at the time of the finding."
         )
 
     def to_public_dict(self) -> dict[str, object]:
         return {
-            "sonde": self.probe_id,
-            "titel": self.title,
+            "probe": self.probe_id,
+            "title": self.title,
             "status": str(self.status),
-            "bedeutung": str(self.bearing),
-            "gemessen": self.measured,
-            "zusammenfassung": self.summary,
+            "bearing": str(self.bearing),
+            "measured": self.measured,
+            "summary": self.summary,
             "details": self.details,
-            "ziel": self.target,
-            "befund_id": self.finding_id,
-            "gemessen_utc": self.measured_utc.isoformat(),
-            "zeitvorbehalt": self.age_note(),
-            "dauer_s": round(self.duration_seconds, 2),
-            "fehler": self.detail_error,
+            "target": self.target,
+            "finding_id": self.finding_id,
+            "measured_utc": self.measured_utc.isoformat(),
+            "time_caveat": self.age_note(),
+            "duration_s": round(self.duration_seconds, 2),
+            "error": self.detail_error,
         }
 
 
 class Probe(Protocol):
-    """Schnittstelle jeder Sonde.
+    """Interface of every probe.
 
-    ``target_for`` ist der Kern der Entscheidung "Kontext-Sonde statt
-    Werkzeugkasten": Eine Sonde laeuft nur, wenn ein Befund sie anfordert, und
-    sie weiss aus dem Befund, WAS sie messen soll.
+    ``target_for`` is the core of the decision "context probe instead of a
+    toolbox": a probe only runs if a finding requests it, and it knows from the
+    finding WHAT to measure.
     """
 
     probe_id: str
     title: str
 
     def target_for(self, finding: Finding) -> str | None:
-        """Was diese Sonde fuer diesen Befund messen wuerde. ``None`` = nichts."""
+        """What this probe would measure for this finding. ``None`` = nothing."""
         ...
 
     def run(self, targets: dict[str, list[Finding]]) -> list[ProbeResult]:
-        """Misst alle angeforderten Ziele und ordnet die Ergebnisse zu."""
+        """Measures all requested targets and assigns the results."""
         ...
 
 
-def disabled_result(probe_id: str, title: str, grund: str) -> ProbeResult:
+def disabled_result(probe_id: str, title: str, reason: str) -> ProbeResult:
     return ProbeResult(
         probe_id=probe_id,
         title=title,
         status=ProbeStatus.DISABLED,
-        summary=grund,
+        summary=reason,
     )
 
 
 def unavailable_result(
-    probe_id: str, title: str, grund: str, *, error: str | None = None
+    probe_id: str, title: str, reason: str, *, error: str | None = None
 ) -> ProbeResult:
     return ProbeResult(
         probe_id=probe_id,
         title=title,
         status=ProbeStatus.UNAVAILABLE,
-        summary=grund,
+        summary=reason,
         detail_error=error,
     )
 
 
 def failed_result(
-    probe_id: str, title: str, grund: str, *, target: str | None = None, error: str | None = None
+    probe_id: str, title: str, reason: str, *, target: str | None = None, error: str | None = None
 ) -> ProbeResult:
     return ProbeResult(
         probe_id=probe_id,
         title=title,
         status=ProbeStatus.FAILED,
-        summary=grund,
+        summary=reason,
         target=target,
         detail_error=error,
     )
@@ -201,8 +202,8 @@ def timed_out_result(probe_id: str, title: str, seconds: float) -> ProbeResult:
         title=title,
         status=ProbeStatus.TIMED_OUT,
         summary=(
-            f"Die Messung wurde nach {seconds:.0f} Sekunden abgebrochen. "
-            "Was bis dahin gelesen wurde, reicht fuer keine Aussage."
+            f"The measurement was aborted after {seconds:.0f} seconds. "
+            "What was read until then is not enough for a statement."
         ),
         duration_seconds=seconds,
     )

@@ -1,15 +1,15 @@
-"""Zusammenfuehrung der Kanalstroeme.
+"""Merging the channel streams.
 
-Get-WinEvent liefert die neuesten Records zuerst. Statt dagegen anzuarbeiten,
-nutzt der Enricher das: ``heapq.merge`` vereinigt die je Kanal bereits sortierten
-Stroeme zu einem absteigenden Gesamtstrom, ohne irgendetwas vollstaendig im
-Speicher zu halten.
+Get-WinEvent delivers the newest records first. Instead of working against
+that, the enricher uses it: ``heapq.merge`` combines the per-channel streams,
+which are already sorted, into one descending overall stream without holding
+anything completely in memory.
 
-Zwei angenehme Folgen:
+Two pleasant consequences:
 
-* "Alle Events fuenf Minuten VOR dem Absturz" wird zur Vorwaerts-Pufferung: die
-  fraglichen Events kommen NACH dem Marker an. Kein Rueckblick noetig.
-* Ein Abbruch trifft das Aelteste, nicht das Neueste.
+* "All events five minutes BEFORE the crash" becomes forward buffering: the
+  events in question arrive AFTER the marker. No look back needed.
+* An abort hits the oldest data, not the newest.
 """
 
 from __future__ import annotations
@@ -25,11 +25,11 @@ def _sorted_descending(records: Iterable[EventRecord]) -> list[EventRecord]:
 
 
 def merge_descending(streams: Iterable[Iterable[EventRecord]]) -> Iterator[EventRecord]:
-    """Vereinigt mehrere Record-Stroeme zu einem absteigend sortierten Strom.
+    """Combines several record streams into one stream sorted descending.
 
-    Jeder Eingangsstrom wird zur Sicherheit selbst absteigend sortiert. Fuer
-    Live-Kanaele ist das ein billiger No-Op; fuer .evtx-Dateien, deren Reihenfolge
-    nicht garantiert ist, ist es die Stelle, an der die Ordnung hergestellt wird.
+    Every input stream is sorted descending itself, to be safe. For live
+    channels that is a cheap no-op; for .evtx files, whose order is not
+    guaranteed, it is the place where the order is established.
     """
     prepared = [_sorted_descending(stream) for stream in streams]
     prepared = [stream for stream in prepared if stream]
@@ -41,5 +41,5 @@ def merge_descending(streams: Iterable[Iterable[EventRecord]]) -> Iterator[Event
 
 
 def merge_sources(sources: dict[str, list[EventRecord]]) -> Iterator[EventRecord]:
-    """Bequemer Einstieg fuer das Ergebnis von ``collect.load_records``."""
+    """Convenient entry for the result of ``collect.load_records``."""
     return merge_descending(sources.values())

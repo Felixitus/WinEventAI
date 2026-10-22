@@ -1,8 +1,8 @@
-"""Regel-Engine: deterministisch, ohne Sprachmodell.
+"""Rule engine: deterministic, without a language model.
 
-Der Bericht muss auch ohne Modell vollstaendig entstehen koennen. Deshalb faellt
-hier jede Entscheidung, die fuer Schwere, Reihenfolge und Sichtbarkeit eines
-Befunds noetig ist; der KI-Layer kommentiert danach nur noch.
+The report must be complete even without a model. Every decision needed for a
+finding's severity, order and visibility is therefore made here; the AI layer
+only comments afterwards.
 """
 
 from __future__ import annotations
@@ -20,9 +20,12 @@ from .schema import SEVERITY_ORDER, Classification, RuleDefinition, Severity
 if TYPE_CHECKING:  # pragma: no cover
     pass
 
+#: Knowledge-base state of a finding when the KB has no entry at all.
+KB_MISSING = "missing"
+
 
 class Finding(BaseModel):
-    """Ein Regeltreffer auf einer Fingerprint-Gruppe."""
+    """A rule hit on a fingerprint group."""
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
@@ -30,21 +33,21 @@ class Finding(BaseModel):
     rule_name: str
     rule_source: str
     severity: Severity
-    bedeutung: str = ""
-    typische_ursachen: list[str] = Field(default_factory=list)
-    empfohlene_checks: list[str] = Field(default_factory=list)
-    referenz: str | None = None
+    meaning: str = ""
+    typical_causes: list[str] = Field(default_factory=list)
+    recommended_checks: list[str] = Field(default_factory=list)
+    reference: str | None = None
     group: FingerprintGroup
     context_events: list[EventRecord] = Field(default_factory=list)
     suppressed: bool = False
     security_indicator: bool = False
-    kb_confidence: str = "fehlt"
-    kb_bedeutung: str | None = None
-    kb_quelle: str | None = None
+    kb_confidence: str = KB_MISSING
+    kb_meaning: str | None = None
+    kb_source: str | None = None
     escalated: bool = False
     probes: list[ProbeResult] = Field(
         default_factory=list,
-        description="Kontext-Messungen zu diesem Befund. Gemessen wird JETZT, nicht damals.",
+        description="Context measurements for this finding. Measured NOW, not back then.",
     )
 
     @property
@@ -57,36 +60,35 @@ class Finding(BaseModel):
 
     @property
     def has_verified_meaning(self) -> bool:
-        """True, wenn eine gepruefte Bedeutung in der Wissensbasis steht.
+        """True if a verified meaning is stored in the knowledge base.
 
-        Ist das nicht der Fall, wird der Eintrag NICHT in den Prompt eingebettet
-        und der Befund erscheint im Bericht mit dem Vermerk
-        "keine gesicherte Bedeutung hinterlegt".
+        If not, the entry is NOT embedded in the prompt and the finding appears
+        in the report with the note "no verified meaning on record".
         """
-        return self.kb_confidence == "sicher" and bool(self.kb_bedeutung)
+        return self.kb_confidence == "verified" and bool(self.kb_meaning)
 
     def to_public_dict(self) -> dict[str, object]:
         return {
-            "befund_id": self.finding_id,
-            "regel": self.rule_id,
-            "regel_name": self.rule_name,
-            "regel_herkunft": self.rule_source,
+            "finding_id": self.finding_id,
+            "rule": self.rule_id,
+            "rule_name": self.rule_name,
+            "rule_origin": self.rule_source,
             "severity": str(self.severity),
-            "eskaliert": self.escalated,
-            "bedeutung": self.bedeutung,
-            "typische_ursachen": self.typische_ursachen,
-            "empfohlene_checks": self.empfohlene_checks,
-            "referenz": self.referenz,
-            "unterdrueckt": self.suppressed,
-            "sicherheitsindikator": self.security_indicator,
-            "wissensbasis": {
+            "escalated": self.escalated,
+            "meaning": self.meaning,
+            "typical_causes": self.typical_causes,
+            "recommended_checks": self.recommended_checks,
+            "reference": self.reference,
+            "suppressed": self.suppressed,
+            "security_indicator": self.security_indicator,
+            "knowledge_base": {
                 "confidence": self.kb_confidence,
-                "bedeutung": self.kb_bedeutung,
-                "quelle": self.kb_quelle,
+                "meaning": self.kb_meaning,
+                "source": self.kb_source,
             },
-            "gruppe": self.group.to_public_dict(),
-            "kontext": [record.to_public_dict() for record in self.context_events],
-            "sonden": [probe.to_public_dict() for probe in self.probes],
+            "group": self.group.to_public_dict(),
+            "context": [record.to_public_dict() for record in self.context_events],
+            "probes": [probe.to_public_dict() for probe in self.probes],
         }
 
 
@@ -95,7 +97,7 @@ def _matches_scalar(value: object, allowed: list[object]) -> bool:
 
 
 class RuleEngine:
-    """Wendet Regeln auf Fingerprint-Gruppen an."""
+    """Applies rules to fingerprint groups."""
 
     def __init__(self, rules: list[RuleDefinition], *, suppress_noise: bool = True) -> None:
         self.rules = rules
@@ -107,25 +109,24 @@ class RuleEngine:
 
     @property
     def rule_keys(self) -> set[tuple[str, int]]:
-        """Vorabfilter fuer die Retention: welche Provider/ID-Paare interessieren.
+        """Pre-filter for retention: which provider/id pairs are of interest.
 
-        Rauschregeln zaehlen hier ausdruecklich NICHT mit. Sonst waere das
-        Kontingent der Prioritaetsklasse 1 auf einem verrauschten System sofort
-        von DistributedCOM aufgebraucht - genau der Fehler, gegen den die
-        Prioritaetsklassen gebaut sind.
+        Noise rules explicitly do NOT count here. Otherwise the priority-1 quota
+        would immediately be used up by DistributedCOM on a noisy system -
+        exactly the error the priority classes are built against.
         """
         keys: set[tuple[str, int]] = set()
         for key, rules in self._by_key.items():
-            if any(rule.classification is not Classification.RAUSCHEN for rule in rules):
+            if any(rule.classification is not Classification.NOISE for rule in rules):
                 keys.add(key)
         return keys
 
     @property
     def noise_keys(self) -> set[tuple[str, int]]:
-        """Paare, fuer die es ausschliesslich Rauschregeln gibt."""
+        """Pairs for which only noise rules exist."""
         return set(self._by_key) - self.rule_keys
 
-    # --- Treffer -------------------------------------------------------------
+    # --- Hits ----------------------------------------------------------------
 
     def _group_matches(self, rule: RuleDefinition, group: FingerprintGroup) -> bool:
         if not _matches_scalar(group.channel, list(rule.match.channels())):
@@ -148,8 +149,8 @@ class RuleEngine:
         if message_pattern is None and not data_patterns:
             return True
 
-        # Textbedingungen werden gegen die Beispiele geprueft, nicht gegen die
-        # gesamte Gruppe - mehr steht nach der Verdichtung nicht zur Verfuegung.
+        # Text conditions are checked against the samples, not the whole group -
+        # nothing more is available after condensing.
         for sample in group.samples:
             if message_pattern is not None and not message_pattern.search(sample.message or ""):
                 continue
@@ -182,7 +183,7 @@ class RuleEngine:
         *,
         context_for: dict[str, list[ContextWindow]] | None = None,
     ) -> list[Finding]:
-        """Erzeugt die Befunde eines Laufs, sortiert nach Schwere."""
+        """Produces the findings of a run, sorted by severity."""
         findings: list[Finding] = []
 
         for group in enrichment.groups:
@@ -191,7 +192,7 @@ class RuleEngine:
                     continue
                 severity, escalated = self._severity_for(rule, group)
                 suppressed = (
-                    rule.classification is Classification.RAUSCHEN and self.suppress_noise
+                    rule.classification is Classification.NOISE and self.suppress_noise
                 )
                 findings.append(
                     Finding(
@@ -199,10 +200,10 @@ class RuleEngine:
                         rule_name=rule.name,
                         rule_source=rule.source,
                         severity=severity,
-                        bedeutung=rule.bedeutung,
-                        typische_ursachen=list(rule.typische_ursachen),
-                        empfohlene_checks=list(rule.empfohlene_checks),
-                        referenz=rule.referenz,
+                        meaning=rule.meaning,
+                        typical_causes=list(rule.typical_causes),
+                        recommended_checks=list(rule.recommended_checks),
+                        reference=rule.reference,
                         group=group,
                         context_events=self._context_for(group, enrichment),
                         suppressed=suppressed,
@@ -225,7 +226,7 @@ class RuleEngine:
     def _context_for(
         group: FingerprintGroup, enrichment: EnrichmentResult
     ) -> list[EventRecord]:
-        """Kontextereignisse, falls die Gruppe selbst ein Marker ist."""
+        """Context events, if the group itself is a marker."""
         from ..enrich.correlate import MARKER_KEYS
 
         if (group.provider, group.event_id) not in MARKER_KEYS:
@@ -243,7 +244,7 @@ class RuleEngine:
 def unmatched_keys(
     enrichment: EnrichmentResult, engine: RuleEngine
 ) -> list[tuple[str, int, int]]:
-    """Provider/ID-Paare ohne Regeltreffer, mit Anzahl - die Arbeitsliste."""
+    """Provider/id pairs without a rule hit, with count - the work list."""
     known = engine.rule_keys
     counter: dict[tuple[str, int], int] = {}
     for group in enrichment.groups:

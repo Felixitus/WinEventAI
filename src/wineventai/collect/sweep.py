@@ -1,28 +1,26 @@
-"""Fehler-Sweep: alle aktiven Kanaele, nur Kritisch und Fehler.
+"""Error sweep: every active channel, critical and error only.
 
-Warum es diesen Collector neben ``EventChannelCollector`` gibt:
+Why this collector exists next to ``EventChannelCollector``:
 
-* Die konfigurierten Kernkanaele werden vollstaendig gelesen. Abstuerze von
-  Treibern und Komponenten landen aber oft in einem der mehreren hundert
-  Operational-Kanaele, die niemand einzeln konfiguriert. Alle davon vollstaendig
-  zu lesen, waere langsam und wuerde die echten Fehler im Rauschen ertraenken.
-  Deshalb wird jeder Kanal gelesen, aber serverseitig auf den numerischen
-  Level gefiltert.
-* EIN PowerShell-Prozess fuer alle Kanaele statt einer je Kanal. Ein
-  Prozessstart kostet grob eine Sekunde; bei mehreren hundert Kanaelen waere
-  das der groesste Teil der Laufzeit. Der Preis: Ein Zeitlimit gilt fuer den
-  ganzen Sweep. Damit das nicht still Kanaele verschluckt, schreibt das Skript
-  zuerst den Plan (welche Kanaele es lesen wird) und nach jedem Kanal eine
-  Abschlusszeile. Was im Plan steht, aber keine Abschlusszeile hat, ist
-  "abgebrochen" - nicht "keine Treffer".
-* Kanaele ohne Treffer bekommen KEINE eigene Zeile in der Abdeckungstabelle,
-  sondern werden in einer Uebersichtszeile gezaehlt. Hunderte "keine
-  Treffer"-Zeilen wuerden die eine Zeile verdecken, auf die es ankommt. Jeder
-  Kanal mit Treffern oder mit unvollstaendiger Erhebung bekommt dagegen seine
-  eigene Zeile.
+* The configured core channels are read in full. Crashes of drivers and
+  components, however, often land in one of the several hundred Operational
+  channels nobody configures individually. Reading all of them in full would
+  be slow and would drown the real errors in noise. Every channel is therefore
+  read, but filtered server-side by the numeric level.
+* ONE PowerShell process for all channels instead of one per channel. A process
+  start costs roughly a second; with several hundred channels that would be
+  most of the runtime. The price: one time limit covers the whole sweep. So
+  that this does not silently swallow channels, the script first writes the
+  plan (which channels it will read) and a closing line after each channel.
+  Whatever is in the plan but has no closing line is "timed out" - not
+  "no hits".
+* Channels without hits get NO row of their own in the coverage table but are
+  counted in one summary row. Hundreds of "no hits" rows would hide the one row
+  that matters. Every channel with hits or with incomplete collection does get
+  its own row.
 
-Die Auswertung (``parse_sweep``, ``build_sweep_results``) kennt nur einen
-Zeilen-Iterator und ist damit ohne Windows testbar.
+The evaluation (``parse_sweep``, ``build_sweep_results``) only knows a line
+iterator and is therefore testable without Windows.
 """
 
 from __future__ import annotations
@@ -41,27 +39,27 @@ from .shell import LIST_SEPARATOR, STATUS_KEY, ShellInfo, run_script, status_fro
 
 SOURCE_TOOL = "powershell:get-winevent-sweep"
 SOURCE_PREFIX = "sweep:"
-SUMMARY_SOURCE_ID = "sweep:uebersicht"
+SUMMARY_SOURCE_ID = "sweep:summary"
 
 PLAN_KEY = "__plan"
 CHANNEL_KEY = "__channel"
 
-#: Begruendung siehe ``shell.LIST_SEPARATOR``.
+#: Rationale: see ``shell.LIST_SEPARATOR``.
 ARG_SEPARATOR = LIST_SEPARATOR
 
-#: Lesbare Gruende, warum ein Kanal gar nicht erst in den Plan kam.
-SKIP_REASONS_DE: dict[str, str] = {
-    "disabled": "abgeschaltet",
-    "type": "anderer Kanaltyp",
-    "excluded": "ausgelassen",
-    "empty": "leer",
-    "unreadable": "nicht lesbar (meist fehlende Adminrechte)",
+#: Readable reasons why a channel never made it into the plan.
+SKIP_REASONS: dict[str, str] = {
+    "disabled": "disabled",
+    "type": "other channel type",
+    "excluded": "excluded",
+    "empty": "empty",
+    "unreadable": "not readable (usually missing admin rights)",
 }
 
 
 @dataclass(slots=True)
 class ChannelTally:
-    """Was zu einem Kanal im Sweep-Strom stand."""
+    """What the sweep stream said about one channel."""
 
     name: str
     records: list[EventRecord] = field(default_factory=list)
@@ -73,7 +71,7 @@ class ChannelTally:
 
 @dataclass(slots=True)
 class SweepParse:
-    """Rohes Ergebnis des Sweep-Stroms, noch ohne Statusbewertung."""
+    """Raw result of the sweep stream, not yet rated."""
 
     planned: list[str] | None = None
     skipped: dict[str, int] = field(default_factory=dict)
@@ -82,11 +80,10 @@ class SweepParse:
     parse_errors: int = 0
 
     def tally(self, name: str) -> ChannelTally:
-        """Liefert den Zaehler zu einem Kanal; Gross-/Kleinschreibung egal.
+        """Returns the tally for a channel; case does not matter.
 
-        Windows behandelt Kanalnamen ohne Ruecksicht auf Gross-/Kleinschreibung.
-        Der Name im Plan und der ``LogName`` am Ereignis muessen nicht
-        zeichengleich sein.
+        Windows treats channel names case-insensitively. The name in the plan
+        and the ``LogName`` on the event need not match character for character.
         """
         key = name.lower()
         entry = self.channels.get(key)
@@ -97,11 +94,10 @@ class SweepParse:
 
 
 def parse_sweep(lines: Iterable[str], *, keep_per_channel: int) -> SweepParse:
-    """Liest den Sweep-Strom: Plan, Records, Kanalabschluesse, Statuszeile.
+    """Reads the sweep stream: plan, records, channel closings, status line.
 
-    ``keep_per_channel`` begrenzt nur das Behalten. Gezaehlt wird jeder Record -
-    die Zahl in der Abdeckungstabelle ist immer die gelesene, nicht die
-    behaltene.
+    ``keep_per_channel`` only limits retention. Every record is counted - the
+    number in the coverage table is always the number read, not the number kept.
     """
     log = get_log()
     result = SweepParse()
@@ -125,7 +121,7 @@ def parse_sweep(lines: Iterable[str], *, keep_per_channel: int) -> SweepParse:
         except NormalizationError as exc:
             result.parse_errors += 1
             if result.parse_errors <= 3:
-                log.warn("Sweep-Zeile uebersprungen", grund=str(exc))
+                log.warn("Sweep line skipped", reason=str(exc))
             continue
 
         entry = result.tally(record.channel)
@@ -135,19 +131,19 @@ def parse_sweep(lines: Iterable[str], *, keep_per_channel: int) -> SweepParse:
             entry.records.append(record)
 
     if result.parse_errors:
-        log.warn("Nicht lesbare Sweep-Zeilen", anzahl=result.parse_errors)
+        log.warn("Unreadable sweep lines", count=result.parse_errors)
     return result
 
 
 def _consume_control(payload: dict[str, object], result: SweepParse) -> bool:
-    """Verarbeitet eine Steuerzeile. False, wenn es doch keine war."""
+    """Processes a control line. False if it was not one after all."""
     if PLAN_KEY in payload:
         plan = payload[PLAN_KEY]
         if isinstance(plan, dict):
             names = plan.get("channels") or []
             result.planned = [str(name) for name in names] if isinstance(names, list) else []
-            # Zaehler sofort anlegen: Dann bestimmt der Name aus dem Plan die
-            # Schreibweise im Bericht, nicht der zufaellig erste Record.
+            # Create the tallies right away: then the plan decides the spelling
+            # in the report, not whichever record happens to come first.
             for name in result.planned:
                 result.tally(name)
             skipped = plan.get("skipped") or {}
@@ -178,10 +174,10 @@ def _is_int(value: object) -> bool:
 
 
 def _channel_status(entry: ChannelTally, timed_out: bool) -> SourceStatus:
-    """Status eines einzelnen Sweep-Kanals.
+    """Status of a single sweep channel.
 
-    Ein Kanal ohne Abschlusszeile ist abgebrochen, auch wenn er schon Records
-    geliefert hat: Ob danach noch weitere gekommen waeren, weiss niemand.
+    A channel without a closing line is unfinished even if it already delivered
+    records: nobody knows whether more would have followed.
     """
     if not entry.finished:
         return SourceStatus.TIMED_OUT if timed_out else SourceStatus.FAILED
@@ -200,10 +196,10 @@ def build_sweep_results(
     duration_seconds: float,
     timed_out: bool,
 ) -> list[CollectedSource]:
-    """Bewertet den geparsten Strom und baut daraus die Quellen fuer den Bericht.
+    """Rates the parsed stream and builds the report sources from it.
 
-    Reihenfolge der Ausgabe: zuerst die Uebersichtszeile, dann je ein Eintrag
-    fuer jeden Kanal mit Treffern oder unvollstaendiger Erhebung.
+    Output order: the summary row first, then one entry for every channel with
+    hits or with incomplete collection.
     """
     level_text = ", ".join(str(level) for level in levels)
 
@@ -222,8 +218,8 @@ def build_sweep_results(
         final_exception = str(value) if value else None
 
     if parsed.planned is None:
-        # Das Skript kam nicht einmal bis zur Kanalliste. Ohne Plan laesst sich
-        # nichts ueber einzelne Kanaele sagen - also auch kein "keine Treffer".
+        # The script did not even get as far as the channel list. Without a plan
+        # nothing can be said about individual channels - so no "no hits" either.
         if timed_out:
             status = SourceStatus.TIMED_OUT
         elif final_exception:
@@ -238,22 +234,22 @@ def build_sweep_results(
                     duration_seconds=duration_seconds,
                     detail=final_exception,
                     note=(
-                        "Die Kanalliste konnte nicht ermittelt werden. Ueber die "
-                        "nicht konfigurierten Kanaele ist keine Aussage moeglich."
+                        "The channel list could not be determined. Nothing can be "
+                        "said about the channels that are not configured."
                     ),
                 )
             )
         ]
 
-    # Kanaele, die Records lieferten, aber nicht im Plan standen, sind ein
-    # Widerspruch im Strom. Sie werden trotzdem gezeigt - verwerfen hiesse,
-    # gelesene Fehler zu verschweigen.
+    # Channels that delivered records but were not in the plan are a
+    # contradiction in the stream. They are shown anyway - discarding them would
+    # mean hiding errors that were read.
     names = list(parsed.planned)
     planned_keys = {name.lower() for name in names}
     for key, entry in parsed.channels.items():
         if key not in planned_keys and entry.records_read:
-            get_log().warn("Sweep-Kanal ausserhalb des Plans", kanal=entry.name)
-            # Ausserhalb des Plans gibt es keine Abschlusszeile zu erwarten.
+            get_log().warn("Sweep channel outside the plan", channel=entry.name)
+            # Outside the plan no closing line is to be expected.
             entry.finished = entry.finished or not timed_out
             names.append(entry.name)
             planned_keys.add(key)
@@ -284,18 +280,18 @@ def build_sweep_results(
         note = None
         if status == SourceStatus.FAILED and not entry.finished:
             note = (
-                "Das Skript brach ab, waehrend dieser Kanal gelesen wurde. "
-                "Weitere Fehler in diesem Kanal sind moeglich."
+                "The script aborted while this channel was being read. "
+                "Further errors in this channel are possible."
             )
         elif status == SourceStatus.TIMED_OUT:
             note = (
-                "Zeitlimit des Sweeps erreicht, waehrend dieser Kanal gelesen wurde. "
-                "Weitere Fehler in diesem Kanal sind moeglich."
+                "The sweep time limit was reached while this channel was being read. "
+                "Further errors in this channel are possible."
             )
         elif status == SourceStatus.TRUNCATED:
             note = (
-                f"{entry.records_read} Ereignisse gezaehlt, {len(entry.records)} behalten. "
-                "Die Zaehlung ist vollstaendig, die Rohdaten nicht."
+                f"{entry.records_read} events counted, {len(entry.records)} retained. "
+                "The count is complete, the raw data is not."
             )
 
         covered_from, covered_to = _covered(entry.records)
@@ -319,32 +315,36 @@ def build_sweep_results(
         incomplete += len(unreached)
 
     summary_parts = [
-        f"{len(names)} Kanaele auf Level {level_text} geprueft: "
-        f"{with_hits} mit Treffern, {empty} ohne Treffer, "
-        f"{incomplete} nicht vollstaendig erhoben."
+        f"{len(names)} channels checked at level {level_text}: "
+        f"{with_hits} with hits, {empty} without hits, "
+        f"{incomplete} not fully collected."
     ]
     if unreached:
         summary_parts.append(
-            ("Wegen Zeitlimit" if timed_out else "Wegen Skriptabbruch")
-            + f" nicht erreicht ({len(unreached)}): "
+            (
+                "Not reached due to the time limit"
+                if timed_out
+                else "Not reached due to a script abort"
+            )
+            + f" ({len(unreached)}): "
             + ", ".join(unreached)
-            + ". Fuer diese Kanaele ist keine Aussage moeglich."
+            + ". No statement is possible for these channels."
         )
     skipped = [
-        f"{count} {SKIP_REASONS_DE.get(reason, reason)}"
+        f"{count} {SKIP_REASONS.get(reason, reason)}"
         for reason, count in sorted(parsed.skipped.items())
         if count
     ]
     if skipped:
-        summary_parts.append("Nicht in den Sweep aufgenommen: " + ", ".join(skipped) + ".")
+        summary_parts.append("Not included in the sweep: " + ", ".join(skipped) + ".")
     summary_parts.append(
-        "Warnungen und Informationsereignisse dieser Kanaele wurden nicht gelesen."
+        "Warnings and informational events of these channels were not read."
     )
 
     if (unreached or not parsed.final_status) and timed_out:
         summary_status = SourceStatus.TIMED_OUT
     elif unreached or not parsed.final_status or final_exception:
-        # Ohne Zeitlimit und ohne Statuszeile ist das Skript abgestuerzt.
+        # Without a time limit and without a status line, the script crashed.
         summary_status = SourceStatus.FAILED
     elif total_read:
         summary_status = SourceStatus.COLLECTED
@@ -373,13 +373,13 @@ def _covered(records: list[EventRecord]) -> tuple[datetime | None, datetime | No
 
 
 class ErrorSweepCollector:
-    """Fuehrt den Fehler-Sweep live aus.
+    """Runs the error sweep live.
 
-    Liefert mehrere Quellen statt einer und hat deshalb ``collect_many`` statt
-    ``collect``. Bewusst keine Unterstuetzung fuer .evtx-Exporte: Ein Sweep
-    ueber "alle Kanaele" eines fremden Rechners setzt dessen Kanalliste voraus,
-    und die liegt bei einem Export nicht vor. Den lokalen Rechner stattdessen zu
-    lesen, waere eine falsche Zuordnung.
+    Delivers several sources instead of one and therefore has ``collect_many``
+    instead of ``collect``. Deliberately no support for .evtx exports: a sweep
+    over "all channels" of another machine presupposes that machine's channel
+    list, which an export does not contain. Reading the local machine instead
+    would be a false attribution.
     """
 
     source_id = SUMMARY_SOURCE_ID
@@ -423,7 +423,7 @@ class ErrorSweepCollector:
         ]
 
     def script_args(self) -> list[str]:
-        """Argumente fuer ``sweep_errors.ps1``; ausgelagert, damit testbar."""
+        """Arguments for ``sweep_errors.ps1``; separated out so it is testable."""
         window_from = self._window_from()
         args = [
             "-StartUtc", window_from.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -441,17 +441,17 @@ class ErrorSweepCollector:
 
     def collect_many(self) -> list[CollectedSource]:
         if not self.config.enabled:
-            return self._single(SourceStatus.DISABLED, "Per Konfiguration abgeschaltet.")
+            return self._single(SourceStatus.DISABLED, "Disabled by configuration.")
         if self.offline:
             return self._single(
                 SourceStatus.NOT_AVAILABLE,
-                "Bei der Auswertung von .evtx-Exporten nicht moeglich: Die Kanalliste "
-                "des Quellrechners liegt nicht vor.",
+                "Not possible when analyzing .evtx exports: the channel list of the "
+                "source machine is not available.",
             )
         if self.shell is None:
             return self._single(
                 SourceStatus.FAILED,
-                "Ohne PowerShell koennen Ereigniskanaele nicht gelesen werden.",
+                "Event channels cannot be read without PowerShell.",
                 detail="PowerShellNotFound",
             )
 
@@ -463,11 +463,11 @@ class ErrorSweepCollector:
         )
         blocked = status_from_stderr(run.stderr)
         if blocked is not None:
-            get_log().warn("Fehler-Sweep blockiert")
+            get_log().warn("Error sweep blocked")
             return self._single(
                 blocked,
-                "Ausfuehrungsrichtlinie oder Rechte verhindern den Aufruf.",
-                detail="PowerShell-Ausfuehrung abgelehnt",
+                "Execution policy or permissions prevent the call.",
+                detail="PowerShell execution refused",
             )
 
         parsed = parse_sweep(run.lines, keep_per_channel=self.config.max_retained_per_channel)

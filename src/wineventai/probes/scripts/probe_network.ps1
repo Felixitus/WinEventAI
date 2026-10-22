@@ -1,28 +1,28 @@
 <#
-    probe_network.ps1 - Erreichbarkeit der lokalen Netzinfrastruktur.
+    probe_network.ps1 - reachability of the local network infrastructure.
 
-    Gemessen wird ausschliesslich gegen Adressen, die dieses Skript selbst aus
-    der IP-Konfiguration des Rechners liest: DNS-Server, Standardgateway,
-    DHCP-Server. Es nimmt KEINE Zieladresse von aussen entgegen. Das ist die
-    Stelle, an der die Zusage "nur lokales Netz" technisch verankert ist und
-    nicht bloss in der Dokumentation steht - ein Aufrufer kann diese Sonde nicht
-    dazu bringen, irgendetwas im Internet anzusprechen.
+    Measurements go exclusively against addresses this script reads itself
+    from the machine's IP configuration: DNS servers, default gateway, DHCP
+    server. It accepts NO target address from outside. That is where the
+    promise "local network only" is anchored technically and not just in the
+    documentation - a caller cannot make this probe talk to anything on the
+    internet.
 
-    Zusaetzlich wird jede gefundene Adresse gegen die privaten Bereiche
-    geprueft. Wer 8.8.8.8 als DNS-Server eingetragen hat, bekommt dafuer keine
-    Messung, sondern den Vermerk "oeffentliche Adresse, uebersprungen".
+    In addition, every address found is checked against the private ranges.
+    Whoever configured 8.8.8.8 as DNS server gets no measurement for it but the
+    note "public address, skipped".
 
-    Ping ueber System.Net.NetworkInformation.Ping statt ueber Test-Connection:
-    Test-Connection liefert in PowerShell 5.1 ein Win32_PingStatus mit dem Feld
-    ResponseTime und ab PowerShell 7 ein PingStatus mit dem Feld Latency. Die
-    .NET-Klasse ist in beiden Faellen dieselbe.
+    Ping via System.Net.NetworkInformation.Ping instead of Test-Connection:
+    Test-Connection returns a Win32_PingStatus with the field ResponseTime in
+    PowerShell 5.1 and a PingStatus with the field Latency from PowerShell 7 on.
+    The .NET class is the same in both cases.
 
-    Alles nur lesend. Keine Zustandsaenderung, kein Dauertest, keine Last.
+    Read-only throughout. No state change, no continuous test, no load.
 #>
 [CmdletBinding()]
 param(
-    # '|'-getrennt statt [string[]]: Ueber -File kaeme "dns,gateway" sonst als
-    # EIN Element an, und -contains 'dns' waere still falsch.
+    # '|'-separated instead of [string[]]: via -File, "dns,gateway" would
+    # otherwise arrive as ONE element, and -contains 'dns' would be silently false.
     [string] $Role = 'dns|gateway|dhcp',
     [int] $Count = 3,
     [int] $TimeoutMs = 1500,
@@ -45,7 +45,7 @@ function Emit([string] $Kind, $Payload) {
 }
 
 function Test-PrivateAddress([string] $Address) {
-    # Sprachneutral und ohne Namensaufloesung: es wird nur die Adresse geprueft.
+    # Language-neutral and without name resolution: only the address is checked.
     if ([string]::IsNullOrWhiteSpace($Address)) { return $false }
     $parsed = $null
     if (-not [System.Net.IPAddress]::TryParse($Address, [ref] $parsed)) { return $false }
@@ -63,7 +63,7 @@ function Test-PrivateAddress([string] $Address) {
     if ([System.Net.IPAddress]::IPv6Loopback.Equals($parsed)) { return $true }
     if ($parsed.IsIPv6LinkLocal -or $parsed.IsIPv6SiteLocal) { return $true }
     $first = $parsed.GetAddressBytes()[0]
-    if (($first -band 0xFE) -eq 0xFC) { return $true }   # fc00::/7, Unique Local
+    if (($first -band 0xFE) -eq 0xFC) { return $true }   # fc00::/7, unique local
     return $false
 }
 
@@ -73,13 +73,13 @@ function Measure-Target([string] $RoleName, [string] $Address, [string] $Adapter
     $script:Seen[$key] = $true
 
     if (-not (Test-PrivateAddress $Address)) {
-        Emit 'ziel' ([ordered]@{
-            rolle        = $RoleName
-            adresse      = $Address
-            adapter      = $Adapter
-            privat       = $false
-            uebersprungen = $true
-            grund        = 'Adresse liegt ausserhalb der privaten Bereiche; diese Sonde misst nur im lokalen Netz.'
+        Emit 'target' ([ordered]@{
+            role     = $RoleName
+            address  = $Address
+            adapter  = $Adapter
+            private  = $false
+            skipped  = $true
+            reason   = 'Address is outside the private ranges; this probe only measures within the local network.'
         })
         return
     }
@@ -96,7 +96,7 @@ function Measure-Target([string] $RoleName, [string] $Address, [string] $Adapter
                     $times += [double] $reply.RoundtripTime
                 }
                 else {
-                    # IPStatus ist ein Enum-Name, kein uebersetzter Text.
+                    # IPStatus is an enum name, not translated text.
                     $lastError = [string] $reply.Status
                 }
             }
@@ -115,45 +115,45 @@ function Measure-Target([string] $RoleName, [string] $Address, [string] $Adapter
         $max = [math]::Round((($times | Measure-Object -Maximum).Maximum), 1)
     }
 
-    Emit 'ziel' ([ordered]@{
-        rolle         = $RoleName
-        adresse       = $Address
-        adapter       = $Adapter
-        privat        = $true
-        uebersprungen = $false
-        gesendet      = $sent
-        empfangen     = $received
-        schnitt_ms    = $avg
-        max_ms        = $max
-        fehler        = $lastError
+    Emit 'target' ([ordered]@{
+        role      = $RoleName
+        address   = $Address
+        adapter   = $Adapter
+        private   = $true
+        skipped   = $false
+        sent      = $sent
+        received  = $received
+        avg_ms    = $avg
+        max_ms    = $max
+        error     = $lastError
     })
 }
 
 function Measure-DnsQuery([string] $Server, [string] $Name) {
     $start = [System.Diagnostics.Stopwatch]::StartNew()
-    $ok = $false; $fehler = $null; $antwort = $null
+    $ok = $false; $queryError = $null; $answer = $null
     try {
-        # Abgefragt wird ausschliesslich der eigene Rechnername. Damit verlaesst
-        # kein fremder Name das Haus, und die Frage ist trotzdem die richtige:
-        # antwortet der Server-DIENST, nicht nur der Server-HOST auf ICMP.
+        # Only the own machine name is queried. That way no foreign name leaves
+        # the house, and the question is still the right one: does the server
+        # SERVICE answer, not only the server HOST on ICMP.
         $result = Resolve-DnsName -Name $Name -Server $Server -DnsOnly -NoHostsFile `
             -QuickTimeout -ErrorAction Stop
         $ok = $true
         $first = $result | Where-Object { $_.IPAddress } | Select-Object -First 1
-        if ($first) { $antwort = [string] $first.IPAddress }
+        if ($first) { $answer = [string] $first.IPAddress }
     }
     catch {
-        $fehler = $_.Exception.GetType().FullName
+        $queryError = $_.Exception.GetType().FullName
     }
     $start.Stop()
 
-    Emit 'dnsabfrage' ([ordered]@{
-        server    = $Server
-        name      = $Name
-        erfolg    = $ok
-        antwort   = $antwort
-        dauer_ms  = [math]::Round($start.Elapsed.TotalMilliseconds, 0)
-        fehler    = $fehler
+    Emit 'dnsquery' ([ordered]@{
+        server      = $Server
+        name        = $Name
+        success     = $ok
+        answer      = $answer
+        duration_ms = [math]::Round($start.Elapsed.TotalMilliseconds, 0)
+        error       = $queryError
     })
 }
 
@@ -162,10 +162,10 @@ try {
 
     foreach ($cfg in $configs) {
         Emit 'adapter' ([ordered]@{
-            beschreibung = $cfg.Description
+            description  = $cfg.Description
             index        = $cfg.InterfaceIndex
-            adressen     = @($cfg.IPAddress)
-            dhcp_aktiv   = [bool] $cfg.DHCPEnabled
+            addresses    = @($cfg.IPAddress)
+            dhcp_enabled = [bool] $cfg.DHCPEnabled
         })
     }
 
@@ -177,7 +177,7 @@ try {
             }
         }
         if (-not $any) {
-            Emit 'leer' ([ordered]@{ rolle = 'gateway'; grund = 'Kein Standardgateway eingetragen.' })
+            Emit 'empty' ([ordered]@{ role = 'gateway'; reason = 'No default gateway configured.' })
         }
     }
 
@@ -190,7 +190,7 @@ try {
             }
         }
         if (-not $any) {
-            Emit 'leer' ([ordered]@{ rolle = 'dhcp'; grund = 'Keine Schnittstelle bezieht ihre Adresse per DHCP.' })
+            Emit 'empty' ([ordered]@{ role = 'dhcp'; reason = 'No interface obtains its address via DHCP.' })
         }
     }
 
@@ -205,19 +205,19 @@ try {
             }
         }
         if ($servers.Count -eq 0) {
-            Emit 'leer' ([ordered]@{ rolle = 'dns'; grund = 'Kein DNS-Server eingetragen.' })
+            Emit 'empty' ([ordered]@{ role = 'dns'; reason = 'No DNS server configured.' })
         }
         elseif (-not $NoDnsQuery) {
-            $eigenerName = $env:COMPUTERNAME
+            $ownName = $env:COMPUTERNAME
             if (Get-Command Resolve-DnsName -ErrorAction SilentlyContinue) {
                 foreach ($server in $servers) {
-                    if (Test-PrivateAddress $server) { Measure-DnsQuery $server $eigenerName }
+                    if (Test-PrivateAddress $server) { Measure-DnsQuery $server $ownName }
                 }
             }
             else {
-                Emit 'hinweis' ([ordered]@{
-                    rolle = 'dns'
-                    text  = 'Resolve-DnsName ist auf diesem System nicht verfuegbar; gemessen wurde nur ICMP.'
+                Emit 'note' ([ordered]@{
+                    role = 'dns'
+                    text = 'Resolve-DnsName is not available on this system; only ICMP was measured.'
                 })
             }
         }
@@ -227,5 +227,5 @@ catch {
     $script:Exception = $_.Exception.GetType().FullName
 }
 
-$status = [ordered]@{ probe = 'netz'; records = $script:Emitted; exception = $script:Exception }
+$status = [ordered]@{ probe = 'network'; records = $script:Emitted; exception = $script:Exception }
 Write-Output (([ordered]@{ __status = $status }) | ConvertTo-Json -Compress -Depth 4)

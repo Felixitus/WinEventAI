@@ -1,8 +1,8 @@
-"""Sicherheitsmodus: Zusammenfuehrung von Indikatoren, Richtlinie und Luecken.
+"""Security mode: combining indicators, policy and gaps.
 
-Alle Ergebnisse sind ausdruecklich als HINWEIS gekennzeichnet, nicht als
-forensische Feststellung. Diese Kennzeichnung ist kein Textbaustein, sondern ein
-Feld - damit sie im Bericht nicht verloren gehen kann.
+All results are explicitly marked as an INDICATION, not as a forensic finding.
+This marking is not a text snippet but a field - so it cannot get lost in the
+report.
 """
 
 from __future__ import annotations
@@ -22,14 +22,14 @@ from .audit_policy import (
 )
 from .gaps import TimelineGap, find_gaps
 
-HINWEIS = (
-    "Hinweis, keine forensische Feststellung. Die Ergebnisse dieses Abschnitts "
-    "begruenden weitere Pruefung, nicht mehr."
+DISCLAIMER = (
+    "Indication, not a forensic finding. The results of this section justify "
+    "further checks, nothing more."
 )
 
 
 class NotLoggedIndicator(BaseModel):
-    """Ein Indikator, der auf diesem System gar nicht entstehen kann."""
+    """An indicator that cannot arise on this system at all."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -37,16 +37,16 @@ class NotLoggedIndicator(BaseModel):
     subcategory: str
     state: PolicyState
     hint: str
-    vorschlag: dict[str, str] = Field(default_factory=dict)
+    suggestion: dict[str, str] = Field(default_factory=dict)
 
 
 class SecurityReport(BaseModel):
-    """Ergebnis des Sicherheitsmodus."""
+    """Result of the security mode."""
 
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
-    disclaimer: str = HINWEIS
+    disclaimer: str = DISCLAIMER
     findings: list[Finding] = Field(default_factory=list)
     policy_checks: list[PolicyCheck] = Field(default_factory=list)
     not_logged: list[NotLoggedIndicator] = Field(default_factory=list)
@@ -67,7 +67,7 @@ def build_security_report(
     is_admin: bool,
     policy_states: dict[str, PolicyState] | None = None,
 ) -> SecurityReport:
-    """Baut den Sicherheitsteil des Berichts."""
+    """Builds the security part of the report."""
     if not enabled:
         return SecurityReport(enabled=False)
 
@@ -81,7 +81,7 @@ def build_security_report(
             subcategory=check.subcategory,
             state=check.state,
             hint=check.hint,
-            vorschlag=fix_suggestion(check) if check.state is PolicyState.INACTIVE else {},
+            suggestion=fix_suggestion(check) if check.state is PolicyState.INACTIVE else {},
         )
         for check in checks
         if check.state is not PolicyState.ACTIVE
@@ -89,8 +89,8 @@ def build_security_report(
 
     security_findings = [finding for finding in findings if finding.security_indicator]
 
-    # Ein Indikator, der nicht protokolliert wird, darf nicht als "kein Befund"
-    # durchgehen - er wird oben ausdruecklich als blinder Fleck ausgewiesen.
+    # An indicator that is not logged must not pass as "no finding" - it is
+    # explicitly shown above as a blind spot.
     _ = blind
 
     return SecurityReport(

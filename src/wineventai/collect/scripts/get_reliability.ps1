@@ -1,11 +1,10 @@
 <#
-    get_reliability.ps1 - Win32_ReliabilityRecords als NDJSON.
+    get_reliability.ps1 - Win32_ReliabilityRecords as NDJSON.
 
-    Wichtig: Diese Klasse ist auf vielen Systemen LEER, weil der RACAgent-Task
-    deaktiviert ist - auf Servern der Regelfall. "Leer" heisst hier also nicht
-    "keine Vorfaelle", sondern "wird nicht erhoben". Das Skript meldet deshalb
-    zusaetzlich, ob der Task ueberhaupt aktiv ist; die Auswertung macht daraus
-    NOT_LOGGED statt EMPTY.
+    Important: this class is EMPTY on many systems because the RACAgent task is
+    disabled - the rule on servers. "Empty" therefore does not mean "no
+    incidents" but "not recorded". The script also reports whether the task is
+    active at all; the evaluation turns that into NOT_LOGGED instead of EMPTY.
 #>
 [CmdletBinding()]
 param(
@@ -19,14 +18,14 @@ try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } 
 $script:Read      = 0
 $script:Exception = $null
 $script:ErrorId   = $null
-$script:RacState  = 'unbekannt'
+$script:RacState  = 'unknown'
 $script:FirstUtc  = $null
 $script:LastUtc   = $null
 
 try {
     $task = Get-ScheduledTask -TaskName 'RacTask' -TaskPath '\Microsoft\Windows\RAC\' -ErrorAction SilentlyContinue
-    if ($task) { $script:RacState = [string]$task.State } else { $script:RacState = 'nicht vorhanden' }
-} catch { $script:RacState = 'unbekannt' }
+    if ($task) { $script:RacState = [string]$task.State } else { $script:RacState = 'not present' }
+} catch { $script:RacState = 'unknown' }
 
 try {
     $start = [datetime]::Parse($StartUtc, [Globalization.CultureInfo]::InvariantCulture,

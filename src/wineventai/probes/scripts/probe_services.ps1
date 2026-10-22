@@ -1,23 +1,22 @@
 <#
-    probe_services.ps1 - Aktueller Zustand benannter Dienste.
+    probe_services.ps1 - current state of named services.
 
-    Gesucht wird ueber den ANZEIGENAMEN, nicht ueber den Dienstnamen. Grund:
-    Der Name kommt aus SCM 7031/7034, und dort steht in properties[0] der
-    Anzeigename - auf einem deutschen System also "Druckwarteschlange" und
-    nicht "Spooler". Wer hier auf -Name filtert, findet auf jedem
-    nicht-englischen Windows nichts.
+    The search is by DISPLAY NAME, not by service name. Reason: the name comes
+    from SCM 7031/7034, and there properties[0] holds the display name - on a
+    German system "Druckwarteschlange" and not "Spooler". Filtering on -Name
+    finds nothing on any non-English Windows.
 
-    Abgefragt wird Win32_Service statt Get-Service: State und StartMode sind
-    dort feste WMI-Bezeichner ("Running", "Auto", "Disabled") und keine
-    uebersetzten Anzeigetexte. Dieselbe Ueberlegung wie bei den numerischen
-    Level-Werten im Collector.
+    Win32_Service is queried instead of Get-Service: State and StartMode are
+    fixed WMI identifiers there ("Running", "Auto", "Disabled") and not
+    translated display texts. The same consideration as with the numeric level
+    values in the collector.
 
-    Alles nur lesend. Kein Start, kein Stopp, keine Aenderung des Starttyps.
+    Read-only throughout. No start, no stop, no change of the start type.
 #>
 [CmdletBinding()]
 param(
-    # '|'-getrennt statt [string[]]: Ueber -File gebunden kaeme sonst nur der
-    # erste Name an, die uebrigen scheitern als Positionsparameter.
+    # '|'-separated instead of [string[]]: bound via -File, only the first name
+    # would arrive, the others fail as positional parameters.
     [Parameter(Mandatory = $true)]
     [string] $DisplayName
 )
@@ -36,36 +35,36 @@ function Emit([string] $Kind, $Payload) {
 }
 
 try {
-    # Einmal alles holen und in PowerShell vergleichen. Ein WQL-Filter mit einem
-    # Anzeigenamen aus einer Ereignismeldung waere eine Einladung fuer
-    # Anfuehrungszeichen im Namen.
-    $alle = @(Get-CimInstance Win32_Service -ErrorAction Stop)
+    # Fetch everything once and compare in PowerShell. A WQL filter with a
+    # display name taken from an event message would be an invitation for
+    # quotation marks in the name.
+    $all = @(Get-CimInstance Win32_Service -ErrorAction Stop)
 
-    foreach ($gesucht in @($DisplayName.Split('|') | Where-Object { $_.Trim() })) {
-        if ([string]::IsNullOrWhiteSpace($gesucht)) { continue }
-        $treffer = $alle | Where-Object {
-            $_.DisplayName -eq $gesucht -or $_.Name -eq $gesucht
+    foreach ($searched in @($DisplayName.Split('|') | Where-Object { $_.Trim() })) {
+        if ([string]::IsNullOrWhiteSpace($searched)) { continue }
+        $hit = $all | Where-Object {
+            $_.DisplayName -eq $searched -or $_.Name -eq $searched
         } | Select-Object -First 1
 
-        if (-not $treffer) {
-            Emit 'dienst' ([ordered]@{
-                gesucht  = $gesucht
-                gefunden = $false
+        if (-not $hit) {
+            Emit 'service' ([ordered]@{
+                searched = $searched
+                found    = $false
             })
             continue
         }
 
-        Emit 'dienst' ([ordered]@{
-            gesucht      = $gesucht
-            gefunden     = $true
-            name         = $treffer.Name
-            anzeigename  = $treffer.DisplayName
-            zustand      = [string] $treffer.State
-            starttyp     = [string] $treffer.StartMode
-            konto        = [string] $treffer.StartName
-            prozess_id   = $treffer.ProcessId
-            exit_code    = $treffer.ExitCode
-            verzoegert   = [bool] $treffer.DelayedAutoStart
+        Emit 'service' ([ordered]@{
+            searched     = $searched
+            found        = $true
+            name         = $hit.Name
+            display_name = $hit.DisplayName
+            state        = [string] $hit.State
+            start_mode   = [string] $hit.StartMode
+            account      = [string] $hit.StartName
+            process_id   = $hit.ProcessId
+            exit_code    = $hit.ExitCode
+            delayed      = [bool] $hit.DelayedAutoStart
         })
     }
 }
@@ -73,5 +72,5 @@ catch {
     $script:Exception = $_.Exception.GetType().FullName
 }
 
-$status = [ordered]@{ probe = 'dienste'; records = $script:Emitted; exception = $script:Exception }
+$status = [ordered]@{ probe = 'services'; records = $script:Emitted; exception = $script:Exception }
 Write-Output (([ordered]@{ __status = $status }) | ConvertTo-Json -Compress -Depth 4)

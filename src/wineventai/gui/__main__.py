@@ -1,4 +1,4 @@
-"""Einstiegspunkt fuer ``python -m wineventai.gui``."""
+"""Entry point for ``python -m wineventai.gui``."""
 
 from __future__ import annotations
 

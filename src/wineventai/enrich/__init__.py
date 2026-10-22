@@ -1,4 +1,4 @@
-"""Enricher: Deduplizierung, Burst-Erkennung, Boot-Sessions, Korrelation."""
+"""Enricher: deduplication, burst detection, boot sessions, correlation."""
 
 from .aggregate import Enricher, EnrichmentResult, FingerprintGroup
 from .boot import BootSession, BootTracker

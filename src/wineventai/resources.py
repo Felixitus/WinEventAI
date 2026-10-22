@@ -1,13 +1,13 @@
-"""Aufloesung mitgelieferter Paket-Ressourcen.
+"""Resolving bundled package resources.
 
-Genau eine Funktion kennt die drei moeglichen Ablageorte:
+Exactly one function knows the three possible locations:
 
-1. ``sys._MEIPASS``      - PyInstaller (one-dir wie one-file)
-2. Verzeichnis neben der ausfuehrbaren Datei
-3. ``importlib.resources`` - regulaere Installation als Paket
+1. ``sys._MEIPASS``      - PyInstaller (one-dir as well as one-file)
+2. the directory next to the executable
+3. ``importlib.resources`` - regular installation as a package
 
-Alle uebrigen Module rufen nur ``resource_path`` auf und wissen nichts ueber
-das Packaging.
+All other modules only call ``resource_path`` and know nothing about the
+packaging.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ _PACKAGE = "wineventai"
 
 
 def _frozen_roots() -> list[Path]:
-    """Kandidatenverzeichnisse, wenn das Programm als EXE gebuendelt laeuft."""
+    """Candidate directories when the program runs bundled as an EXE."""
     roots: list[Path] = []
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass:
@@ -35,13 +35,13 @@ def _frozen_roots() -> list[Path]:
 
 
 def resource_path(relative: str) -> Path:
-    """Liefert den Pfad einer mitgelieferten Ressource.
+    """Returns the path of a bundled resource.
 
-    ``relative`` ist immer paketrelativ mit Schraegstrichen, z.B.
+    ``relative`` is always package-relative with forward slashes, e.g.
     ``"rules/builtin/core_system.yaml"``.
 
     Raises:
-        FileNotFoundError: wenn die Ressource in keinem Ablageort existiert.
+        FileNotFoundError: if the resource exists in none of the locations.
     """
     rel = Path(relative)
 
@@ -55,26 +55,26 @@ def resource_path(relative: str) -> Path:
         candidate = Path(str(base.joinpath(*rel.parts)))
         if candidate.exists():
             return candidate
-    except (ModuleNotFoundError, TypeError):  # pragma: no cover - Paket fehlt
+    except (ModuleNotFoundError, TypeError):  # pragma: no cover - package missing
         pass
 
     fallback = Path(__file__).resolve().parent / rel
     if fallback.exists():
         return fallback
 
-    raise FileNotFoundError(f"Mitgelieferte Ressource nicht gefunden: {relative}")
+    raise FileNotFoundError(f"Bundled resource not found: {relative}")
 
 
 def read_resource_text(relative: str) -> str:
-    """Liest eine mitgelieferte Textressource als UTF-8."""
+    """Reads a bundled text resource as UTF-8."""
     return resource_path(relative).read_text(encoding="utf-8")
 
 
 def program_data_dir() -> Path:
-    """Beschreibbares Verzeichnis fuer Konfiguration, Regel-Overlay und Wissensbasis.
+    """Writable directory for configuration, rule overlay and knowledge base.
 
-    Unter Windows ``%PROGRAMDATA%\\WinEventAI``, sonst ``~/.local/share/wineventai``.
-    Das Verzeichnis wird nicht angelegt; das machen die Aufrufer bei Bedarf.
+    On Windows ``%PROGRAMDATA%\\WinEventAI``, otherwise ``~/.local/share/wineventai``.
+    The directory is not created here; callers do that when needed.
     """
     import os
 

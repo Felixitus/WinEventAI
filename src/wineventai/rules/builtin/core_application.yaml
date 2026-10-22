@@ -1,81 +1,80 @@
-# Anwendungsebene.
+# Application level.
 #
-# 1000 ist die meistgenannte und am haeufigsten falsch zugeordnete Event-ID
-# ueberhaupt: Sie existiert unter vielen Providern. Deshalb hier ausdruecklich
-# der Provider "Application Error" und der Kanal Application.
+# 1000 is the most cited and most often misattributed event id of all: it
+# exists under many providers. Hence the explicit provider "Application Error"
+# and the Application channel here.
 
 - id: application-error-1000
-  name: Anwendungsabsturz (Application Error 1000)
+  name: Application crash (Application Error 1000)
   match:
     channel: Application
     provider: Application Error
     event_id: 1000
-  severity: fehler
-  bedeutung: >
-    Eine Anwendung wurde durch eine unbehandelte Ausnahme beendet. Die
-    Ereignisdaten nennen Programmname, Version, fehlerhaftes Modul und
-    Ausnahmecode.
-  typische_ursachen:
-    - Fehler in der Anwendung selbst oder in einem geladenen Modul
-    - Beschaedigte Programmdateien
-    - Inkompatible Erweiterung oder Add-in
-    - Defekter Arbeitsspeicher, wenn viele verschiedene Programme betroffen sind
-  empfohlene_checks:
-    - Immer dasselbe fehlerhafte Modul? Dann ist die Ursache dort, nicht im Programm.
-    - "Bei vielen verschiedenen Programmen: Arbeitsspeicher und Datentraeger pruefen."
-    - Zeitliche Naehe zu einem Update oder einer Installation pruefen.
+  severity: error
+  meaning: >
+    An application was terminated by an unhandled exception. The event data
+    name program, version, faulting module and exception code.
+  typical_causes:
+    - Bug in the application itself or in a loaded module
+    - Damaged program files
+    - Incompatible extension or add-in
+    - Defective memory, if many different programs are affected
+  recommended_checks:
+    - Always the same faulting module? Then the cause is there, not in the program.
+    - "With many different programs: check memory and disks."
+    - Check for closeness in time to an update or an installation.
   threshold:
     count_min: 1
     escalate_above: 50
-    escalate_to: kritisch
+    escalate_to: critical
 
 - id: application-hang-1002
-  name: Anwendung reagiert nicht (Application Hang 1002)
+  name: Application not responding (Application Hang 1002)
   match:
     channel: Application
     provider: Application Hang
     event_id: 1002
-  severity: warnung
-  bedeutung: >
-    Eine Anwendung hat ueber laengere Zeit nicht auf Fenstermeldungen reagiert
-    und wurde als haengend gemeldet.
-  typische_ursachen:
-    - Wartezeit auf Netzwerk-, Datei- oder Datenbankzugriff
-    - Blockierende Erweiterung
-    - Ueberlasteter oder ausfallender Datentraeger
-  empfohlene_checks:
-    - Zeitgleiche Datentraegerfehler (disk 51/153) pruefen.
-    - Betrifft es nur Zugriffe auf Netzlaufwerke? Dann Netz statt Anwendung pruefen.
+  severity: warning
+  meaning: >
+    An application did not respond to window messages for a longer time and
+    was reported as hanging.
+  typical_causes:
+    - Waiting for network, file or database access
+    - Blocking extension
+    - Overloaded or failing disk
+  recommended_checks:
+    - Check simultaneous disk errors (disk 51/153).
+    - Does it only affect access to network drives? Then check the network, not the application.
 
 - id: wer-report
-  name: Fehlerbericht vorhanden (Windows Error Reporting)
+  name: Error report present (Windows Error Reporting)
   match:
     channel: WER
     provider: Windows Error Reporting
     event_id: 0
-  severity: warnung
-  bedeutung: >
-    Im WER-Archiv liegt ein Fehlerbericht. Ausgewertet werden nur die Metadaten
-    der Report.wer; die Anhaenge werden bewusst nicht angefasst, weil sie
-    beliebige Prozessinhalte enthalten koennen.
-  typische_ursachen:
-    - Absturz einer Anwendung oder eines Dienstes
-    - Stoppfehler des Systems
-  empfohlene_checks:
-    - Zeitstempel mit Application Error 1000 und BugCheck 1001 abgleichen.
+  severity: warning
+  meaning: >
+    There is an error report in the WER archive. Only the metadata of the
+    Report.wer is evaluated; the attachments are deliberately left alone
+    because they can contain arbitrary process content.
+  typical_causes:
+    - Crash of an application or a service
+    - Stop error of the system
+  recommended_checks:
+    - Match timestamps with Application Error 1000 and BugCheck 1001.
 
-- id: minidump-vorhanden
-  name: Speicherabbild vorhanden
+- id: minidump-present
+  name: Memory dump present
   match:
     channel: Minidump
     provider: Minidump
     event_id: 0
-  severity: warnung
-  bedeutung: >
-    Es liegt ein Minidump vor. Das ist der belastbarste Hinweis darauf, dass ein
-    Stoppfehler tatsaechlich stattgefunden hat.
-  typische_ursachen:
-    - Stoppfehler des Systems
-  empfohlene_checks:
-    - Zeitstempel des Abbilds mit Kernel-Power 41 und BugCheck 1001 abgleichen.
-    - Auswertung des Abbilds ist nicht Teil der Version 1 dieses Werkzeugs.
+  severity: warning
+  meaning: >
+    A minidump is present. That is the most reliable indication that a stop
+    error actually took place.
+  typical_causes:
+    - Stop error of the system
+  recommended_checks:
+    - Match the dump's timestamp with Kernel-Power 41 and BugCheck 1001.
+    - Analyzing the dump is not part of version 1 of this tool.

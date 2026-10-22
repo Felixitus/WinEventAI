@@ -1,0 +1,21 @@
+{
+  "summary": "The system restarted without a regular shutdown having been logged before. Shortly before, I/O errors on the disk pile up.",
+  "hypotheses": [
+    {
+      "statement": "The unclean restart probably goes back to a stop error that was preceded by disk problems.",
+      "evidence": [
+        {"provider": "Microsoft-Windows-Kernel-Power", "event_id": 41, "timestamp_utc": "2026-09-08T09:00:00+00:00"}
+      ],
+      "confidence": "medium"
+    }
+  ],
+  "recommended_steps": [
+    {
+      "statement": "Check the SMART values of the affected disk before replacing drivers.",
+      "evidence": [
+        {"provider": "Microsoft-Windows-Kernel-Power", "event_id": 41, "timestamp_utc": "2026-09-08T09:00:00+00:00"}
+      ],
+      "confidence": "high"
+    }
+  ]
+}

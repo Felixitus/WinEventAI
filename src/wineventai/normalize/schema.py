@@ -1,10 +1,10 @@
-"""Einheitliches Event-Schema.
+"""Uniform event schema.
 
-Grundsatz: Gespeichert wird, was sprachneutral ist. Windows uebersetzt
-``LevelDisplayName``, ``TaskDisplayName``, ``OpcodeDisplayName`` und
-``KeywordsDisplayNames``; auf gemischten deutschen und englischen Systemen sind
-diese Felder als Matching-Grundlage unbrauchbar. Deshalb steht hier ueberall der
-numerische Wert, und der Anzeigename ist optionales Beiwerk fuer den Bericht.
+Principle: store what is language-neutral. Windows translates
+``LevelDisplayName``, ``TaskDisplayName``, ``OpcodeDisplayName`` and
+``KeywordsDisplayNames``; on mixed German and English systems these fields are
+useless for matching. The numeric value is therefore used everywhere here, and
+the display name is optional decoration for the report.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class Level(IntEnum):
-    """Numerische Schweregrade des Windows-Ereignisprotokolls."""
+    """Numeric severity levels of the Windows event log."""
 
     LOG_ALWAYS = 0
     CRITICAL = 1
@@ -27,25 +27,25 @@ class Level(IntEnum):
     VERBOSE = 5
 
 
-LEVEL_LABEL_DE: dict[int, str] = {
-    0: "immer",
-    1: "kritisch",
-    2: "fehler",
-    3: "warnung",
+LEVEL_LABEL: dict[int, str] = {
+    0: "always",
+    1: "critical",
+    2: "error",
+    3: "warning",
     4: "information",
-    5: "ausfuehrlich",
+    5: "verbose",
 }
 
 
 def level_label(value: int | None) -> str:
-    """Deutsche Bezeichnung eines numerischen Level-Werts."""
+    """Label of a numeric level value."""
     if value is None:
-        return "unbekannt"
-    return LEVEL_LABEL_DE.get(int(value), f"stufe {value}")
+        return "unknown"
+    return LEVEL_LABEL.get(int(value), f"level {value}")
 
 
 class EventRecord(BaseModel):
-    """Ein normalisiertes Ereignis, unabhaengig von der Quelle."""
+    """A normalized event, independent of its source."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -57,26 +57,26 @@ class EventRecord(BaseModel):
     level: int = Level.INFORMATION
     task: int | None = None
     opcode: int | None = None
-    keywords: int | None = Field(default=None, description="Bitmaske, nicht die Anzeigenamen.")
+    keywords: int | None = Field(default=None, description="Bit mask, not the display names.")
     computer: str = ""
     user_sid: str | None = None
     record_id: int | None = Field(
-        default=None, description="Zeiger in das Original-.evtx, fuer die Evidenzkette."
+        default=None, description="Pointer into the original .evtx, for the chain of evidence."
     )
     process_id: int | None = None
     thread_id: int | None = None
-    message: str | None = Field(default=None, description="Lokalisiert. Kann fehlen.")
+    message: str | None = Field(default=None, description="Localized. May be missing.")
     properties: list[str | None] = Field(
-        default_factory=list, description="Positionale EventData-Werte, sprachneutral."
+        default_factory=list, description="Positional EventData values, language-neutral."
     )
     event_data: dict[str, str] | None = Field(
-        default=None, description="Benannte EventData-Felder; nur wenn XML angefordert wurde."
+        default=None, description="Named EventData fields; only if XML was requested."
     )
     raw_hash: str = ""
     source_tool: str = ""
     source_ref: str = ""
 
-    # Wird vom Enricher gesetzt, nicht vom Collector.
+    # Set by the enricher, not by the collector.
     fingerprint: str | None = None
     boot_session: int | None = None
 
@@ -86,18 +86,18 @@ class EventRecord(BaseModel):
 
     @property
     def key(self) -> str:
-        """Provider und ID als ein Schluessel. Event-IDs sind nur je Provider eindeutig."""
+        """Provider and id as one key. Event ids are only unique per provider."""
         return f"{self.provider}:{self.event_id}"
 
     def excerpt(self, limit: int) -> str:
-        """Gekuerzte Meldung fuer Prompt und Bericht."""
+        """Shortened message for prompt and report."""
         text = " ".join((self.message or "").split())
         if len(text) <= limit:
             return text
         return text[: limit - 1].rstrip() + "…"
 
     def data_value(self, name: str) -> str | None:
-        """Benanntes EventData-Feld, falls das XML geholt wurde."""
+        """Named EventData field, if the XML was fetched."""
         if not self.event_data:
             return None
         for key, value in self.event_data.items():
@@ -111,15 +111,15 @@ class EventRecord(BaseModel):
         return None
 
     def to_public_dict(self) -> dict[str, Any]:
-        """Kompakte Darstellung fuer Bericht und JSON-Ausgabe."""
+        """Compact representation for report and JSON output."""
         return {
-            "zeit_utc": self.timestamp_utc.isoformat(),
-            "kanal": self.channel,
+            "time_utc": self.timestamp_utc.isoformat(),
+            "channel": self.channel,
             "provider": self.provider,
             "event_id": self.event_id,
             "level": self.level,
             "level_text": self.level_label,
             "computer": self.computer,
             "record_id": self.record_id,
-            "meldung": self.message,
+            "message": self.message,
         }

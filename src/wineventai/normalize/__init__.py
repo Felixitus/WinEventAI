@@ -1,4 +1,4 @@
-"""Normalizer: einheitliches Event-Schema und Maskierung."""
+"""Normalizer: uniform event schema and masking."""
 
 from .mapper import (
     NormalizationError,
@@ -7,10 +7,10 @@ from .mapper import (
     record_from_mapping,
 )
 from .masking import mask_properties, mask_text
-from .schema import LEVEL_LABEL_DE, EventRecord, Level, level_label
+from .schema import LEVEL_LABEL, EventRecord, Level, level_label
 
 __all__ = [
-    "LEVEL_LABEL_DE",
+    "LEVEL_LABEL",
     "EventRecord",
     "Level",
     "NormalizationError",

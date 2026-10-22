@@ -1,9 +1,8 @@
-"""KI-Layer: Redaction, Buendel, Nachpruefung, Ausfallverhalten.
+"""AI layer: redaction, bundles, verification, failure behavior, cloud guard.
 
-Die beiden wichtigsten Tests dieses Projekts stehen hier: Was passiert, wenn das
-Modell eine Event-ID erfindet, und was passiert, wenn es einen Platzhalter
-erfindet? In beiden Faellen muss die Aussage markiert und die restliche Antwort
-erhalten bleiben.
+The two most important tests of this project are here: what happens if the
+model invents an event id, and what happens if it invents a placeholder? In
+both cases the statement must be marked and the rest of the answer kept.
 """
 
 from __future__ import annotations
@@ -32,20 +31,20 @@ from wineventai.rules.loader import load_rules
 
 CONTEXT = SystemContext(
     host="HOST_1",
-    betriebssystem="Windows 11",
-    zeitraum_von_utc="2026-09-03T12:00:00+00:00",
-    zeitraum_bis_utc="2026-09-10T12:00:00+00:00",
-    boot_sitzungen=2,
+    operating_system="Windows 11",
+    period_from_utc="2026-09-03T12:00:00+00:00",
+    period_to_utc="2026-09-10T12:00:00+00:00",
+    boot_sessions=2,
 )
 
 
 class FakeClient:
-    """Ollama-Ersatz. Liefert aufgezeichnete Antworten, geht nie ins Netz."""
+    """Stand-in for Ollama. Returns recorded answers, never touches the network."""
 
     def __init__(self, responses: list[str], *, reachable: bool = True) -> None:
         self.responses = list(responses)
         self.reachable = reachable
-        self.model = "test-modell"
+        self.model = "test-model"
         self.calls: list[tuple[str, str]] = []
 
     def available(self) -> bool:
@@ -69,8 +68,8 @@ def _findings():
     stream = [
         make_record(minutes_ago=0, provider="Microsoft-Windows-Kernel-Power",
                     event_id=41, level=1, properties=["0", "0", "122"],
-                    message="Das System wurde neu gestartet. Benutzer INTERN\\m.schmidt "
-                            "von 10.20.30.40."),
+                    message="The system has rebooted. User INTERN\\m.schmidt "
+                            "from 10.20.30.40."),
         make_record(minutes_ago=2, provider="disk", event_id=153, level=2,
                     properties=["1", "4001"]),
     ]
@@ -82,61 +81,61 @@ def _findings():
 # --- Redaction ---------------------------------------------------------------
 
 
-def test_pseudonyme_sind_stabil_und_nicht_pauschal() -> None:
-    """Pauschale Sternchen wuerden den Korrelator wertlos machen."""
+def test_pseudonyms_are_stable_and_not_blanket() -> None:
+    """Blanket asterisks would make the correlator worthless."""
     redactor = Redactor()
-    a = redactor.text("Anmeldung von INTERN\\m.schmidt an 10.20.30.40")
-    b = redactor.text("Abmeldung von INTERN\\m.schmidt an 10.20.30.40")
+    a = redactor.text("Logon of INTERN\\m.schmidt at 10.20.30.40")
+    b = redactor.text("Logoff of INTERN\\m.schmidt at 10.20.30.40")
 
     assert "m.schmidt" not in a
     assert "10.20.30.40" not in a
-    assert "BENUTZER_1" in a and "BENUTZER_1" in b, "gleicher Benutzer, gleiches Pseudonym"
+    assert "USER_1" in a and "USER_1" in b, "same user, same pseudonym"
     assert "IP_1" in a and "IP_1" in b
 
 
-def test_verschiedene_benutzer_bekommen_verschiedene_pseudonyme() -> None:
+def test_different_users_get_different_pseudonyms() -> None:
     redactor = Redactor()
-    text = redactor.text("INTERN\\anna und INTERN\\bert")
-    assert "BENUTZER_1" in text and "BENUTZER_2" in text
+    text = redactor.text("INTERN\\anna and INTERN\\bert")
+    assert "USER_1" in text and "USER_2" in text
 
 
-def test_bekannte_systemkonten_bleiben_erhalten() -> None:
-    """S-1-5-18 ist auf jedem Windows dasselbe und sagt nichts ueber Personen."""
+def test_well_known_system_accounts_are_kept() -> None:
+    """S-1-5-18 is the same on every Windows and says nothing about people."""
     redactor = Redactor()
-    assert "S-1-5-18" in (redactor.text("Konto S-1-5-18 hat keine Rechte") or "")
+    assert "S-1-5-18" in (redactor.text("Account S-1-5-18 has no rights") or "")
 
 
-def test_rueckersetzen_stellt_klartext_wieder_her() -> None:
+def test_restoring_brings_back_the_plain_text() -> None:
     redactor = Redactor()
-    pseudonymisiert = redactor.text("Benutzer INTERN\\m.schmidt")
-    assert redactor.restore(pseudonymisiert or "").endswith("m.schmidt")
+    pseudonymized = redactor.text("User INTERN\\m.schmidt")
+    assert redactor.restore(pseudonymized or "").endswith("m.schmidt")
 
 
-def test_erfundene_platzhalter_werden_erkannt() -> None:
+def test_invented_placeholders_are_detected() -> None:
     redactor = Redactor()
     redactor.text("INTERN\\m.schmidt")
-    assert redactor.invented_placeholders("BENUTZER_1 war es") == set()
-    assert redactor.invented_placeholders("BENUTZER_7 war es") == {"BENUTZER_7"}
+    assert redactor.invented_placeholders("USER_1 did it") == set()
+    assert redactor.invented_placeholders("USER_7 did it") == {"USER_7"}
 
 
-def test_redaction_arbeitet_auf_dem_record_nicht_auf_dem_prompttext() -> None:
+def test_redaction_works_on_the_record_not_on_the_prompt_text() -> None:
     redactor = Redactor()
-    record = make_record(message="Fehler bei INTERN\\m.schmidt", computer="WS-4711",
+    record = make_record(message="Error at INTERN\\m.schmidt", computer="WS-4711",
                          user_sid="S-1-5-21-1-2-3-1107")
-    redigiert = redactor.record(record)
+    redacted = redactor.record(record)
 
-    assert redigiert.computer.startswith("HOST_")
-    assert redigiert.user_sid is not None and redigiert.user_sid.startswith("SID_")
-    assert "m.schmidt" not in (redigiert.message or "")
+    assert redacted.computer.startswith("HOST_")
+    assert redacted.user_sid is not None and redacted.user_sid.startswith("SID_")
+    assert "m.schmidt" not in (redacted.message or "")
     assert record.message is not None and "m.schmidt" in record.message, (
-        "das Original darf nicht veraendert werden"
+        "the original must not be changed"
     )
 
 
-# --- Buendel -----------------------------------------------------------------
+# --- Bundles -----------------------------------------------------------------
 
 
-def test_buendel_enthaelt_nie_das_rohlog() -> None:
+def test_the_bundle_never_contains_the_raw_log() -> None:
     findings = [f for f in _findings() if f.rule_id == "kernel-power-41"]
     bundle = build_bundle(findings[0], context=CONTEXT, redactor=Redactor(), kb=None,
                           max_samples=3, excerpt_chars=200)
@@ -144,35 +143,35 @@ def test_buendel_enthaelt_nie_das_rohlog() -> None:
 
     assert "m.schmidt" not in text
     assert "10.20.30.40" not in text
-    assert bundle.belegbare_ereignisse, "Belege muessen im Buendel stehen"
+    assert bundle.citable_events, "evidence must be in the bundle"
 
 
-def test_ungesicherte_wissensbasis_geht_nicht_in_den_prompt(tmp_path) -> None:
-    """Ein unsicherer Eintrag im Kontext waere schlimmer als gar keiner."""
+def test_an_unverified_knowledge_base_entry_does_not_go_into_the_prompt(tmp_path) -> None:
+    """An unverified entry in the context would be worse than none at all."""
     from wineventai.kb.store import KbConfidence, KbEntry, KnowledgeBase
 
     kb = KnowledgeBase(tmp_path / "kb.sqlite")
     kb.upsert(
         KbEntry(provider="Microsoft-Windows-Kernel-Power", event_id=41,
-                bedeutung="Vermutlich irgendwas", confidence=KbConfidence.UNSICHER)
+                meaning="Probably something", confidence=KbConfidence.UNVERIFIED)
     )
     finding = next(f for f in _findings() if f.rule_id == "kernel-power-41")
     bundle = build_bundle(finding, context=CONTEXT, redactor=Redactor(), kb=kb,
                           max_samples=3, excerpt_chars=200)
 
-    assert bundle.wissensbasis is None
-    assert bundle.wissensbasis_status == "unsicher"
-    assert "Vermutlich irgendwas" not in bundle.as_prompt_json()
+    assert bundle.knowledge_base is None
+    assert bundle.knowledge_base_status == "unverified"
+    assert "Probably something" not in bundle.as_prompt_json()
 
 
-def test_zu_grosses_buendel_wird_geteilt_statt_gekuerzt() -> None:
+def test_a_bundle_that_is_too_large_is_split_instead_of_truncated() -> None:
     findings = [f for f in _findings() if f.rule_id == "kernel-power-41"]
     bundle = build_bundle(findings[0], context=CONTEXT, redactor=Redactor(), kb=None,
                           max_samples=3, excerpt_chars=200)
     bundle = bundle.model_copy(
         update={
-            "beispielmeldungen": ["x" * 500] * 8,
-            "belegbare_ereignisse": bundle.belegbare_ereignisse * 8,
+            "sample_messages": ["x" * 500] * 8,
+            "citable_events": bundle.citable_events * 8,
         }
     )
     parts = fit_to_budget(bundle, max_tokens=200, chars_per_token=3.2)
@@ -180,19 +179,19 @@ def test_zu_grosses_buendel_wird_geteilt_statt_gekuerzt() -> None:
     assert all(isinstance(part, FindingBundle) for part in parts)
 
 
-def test_token_schaetzung_ist_konservativ() -> None:
+def test_the_token_estimate_is_conservative() -> None:
     assert estimate_tokens("a" * 320, 3.2) == 101
     assert estimate_tokens("", 3.2) == 1
 
 
-# --- Nachpruefung ------------------------------------------------------------
+# --- Verification ------------------------------------------------------------
 
 
-def test_erfundene_event_id_verwirft_nur_die_einzelne_aussage() -> None:
-    """Der wichtigste Test des Projekts.
+def test_an_invented_event_id_rejects_only_the_single_statement() -> None:
+    """The most important test of the project.
 
-    Eine schlechte Fussnote darf nicht drei gute Hypothesen kosten - deshalb
-    wird das einzelne Statement markiert, nicht die ganze Antwort verworfen.
+    One bad footnote must not cost three good hypotheses - so the single
+    statement is marked, not the whole answer rejected.
     """
     findings = _findings()
     redactor = Redactor()
@@ -201,17 +200,17 @@ def test_erfundene_event_id_verwirft_nur_die_einzelne_aussage() -> None:
                      max_samples=3, excerpt_chars=200)
         for finding in findings
     ]
-    output = ExplainerOutput.model_validate_json(_fixture("explainer_erfundene_id.json"))
+    output = ExplainerOutput.model_validate_json(_fixture("explainer_invented_id.json"))
     verified, report = verify_explainer(output, bundles, redactor=redactor)
 
     assert report.statements_rejected == 2
     assert 4321 in report.invented_event_ids
-    assert "BENUTZER_7" in report.invented_placeholders
-    assert all(not statement.verified for statement in verified.hypothesen)
-    assert verified.zusammenfassung, "die Antwort selbst bleibt erhalten"
+    assert "USER_7" in report.invented_placeholders
+    assert all(not statement.verified for statement in verified.hypotheses)
+    assert verified.summary, "the answer itself is kept"
 
 
-def test_gedeckte_aussage_bleibt_unbeanstandet() -> None:
+def test_a_covered_statement_stays_unchallenged() -> None:
     findings = _findings()
     redactor = Redactor()
     bundles = [
@@ -219,12 +218,12 @@ def test_gedeckte_aussage_bleibt_unbeanstandet() -> None:
                      max_samples=3, excerpt_chars=200)
         for finding in findings
     ]
-    stamp = bundles[0].belegbare_ereignisse[0]["timestamp_utc"]
+    stamp = bundles[0].citable_events[0]["timestamp_utc"]
     payload = {
-        "zusammenfassung": "Unsauberer Neustart.",
-        "hypothesen": [
+        "summary": "Unclean restart.",
+        "hypotheses": [
             {
-                "aussage": "Der Neustart war nicht sauber.",
+                "statement": "The restart was not clean.",
                 "evidence": [
                     {
                         "provider": bundles[0].provider,
@@ -232,33 +231,33 @@ def test_gedeckte_aussage_bleibt_unbeanstandet() -> None:
                         "timestamp_utc": stamp,
                     }
                 ],
-                "confidence": "mittel",
+                "confidence": "medium",
             }
         ],
-        "empfohlene_schritte": [],
+        "recommended_steps": [],
     }
     verified, report = verify_explainer(
         ExplainerOutput.model_validate(payload), bundles, redactor=redactor
     )
     assert report.clean
-    assert verified.hypothesen[0].verified
+    assert verified.hypotheses[0].verified
 
 
-def test_prosa_erkennung_findet_nur_echte_event_id_nennungen() -> None:
-    assert prose_event_ids("Event-ID 1001 und EventID 41") == {1001, 41}
-    assert prose_event_ids("Es waren 12 Vorfaelle in 3 Stunden") == set()
+def test_prose_detection_only_finds_real_event_id_mentions() -> None:
+    assert prose_event_ids("Event ID 1001 and EventID 41") == {1001, 41}
+    assert prose_event_ids("There were 12 incidents in 3 hours") == set()
 
 
-def test_falscher_zeitstempel_wird_bemerkt() -> None:
+def test_a_wrong_timestamp_is_noticed() -> None:
     findings = [f for f in _findings() if f.rule_id == "kernel-power-41"]
     redactor = Redactor()
     bundles = [build_bundle(findings[0], context=CONTEXT, redactor=redactor, kb=None,
                             max_samples=3, excerpt_chars=200)]
     payload = {
-        "zusammenfassung": "Test",
-        "hypothesen": [
+        "summary": "Test",
+        "hypotheses": [
             {
-                "aussage": "Etwas geschah.",
+                "statement": "Something happened.",
                 "evidence": [
                     {
                         "provider": bundles[0].provider,
@@ -266,69 +265,83 @@ def test_falscher_zeitstempel_wird_bemerkt() -> None:
                         "timestamp_utc": datetime(2001, 1, 1, tzinfo=UTC).isoformat(),
                     }
                 ],
-                "confidence": "hoch",
+                "confidence": "high",
             }
         ],
-        "empfohlene_schritte": [],
+        "recommended_steps": [],
     }
     _, report = verify_explainer(ExplainerOutput.model_validate(payload), bundles)
     assert report.statements_rejected == 1
-    assert "Zeitstempel" in report.rejected_reasons[0]
+    assert "timestamp" in report.rejected_reasons[0]
 
 
-# --- Ausfallverhalten --------------------------------------------------------
+# --- Failure behavior --------------------------------------------------------
 
 
-def test_ohne_ollama_entsteht_der_bericht_trotzdem() -> None:
+def test_without_ollama_the_report_is_built_anyway() -> None:
     layer = AiLayer(AiConfig(), client=FakeClient([], reachable=False))
     result, bundles = layer.run(_findings(), CONTEXT)
 
     assert result.used is False
     assert result.unavailable_reason is not None
-    assert bundles, "die Buendel entstehen auch ohne Modell und bleiben nachvollziehbar"
+    assert "rule engine" in result.unavailable_reason
+    assert bundles, "the bundles are built without a model too and stay traceable"
 
 
-def test_schemaverstoss_fuehrt_zu_genau_einem_retry_und_dann_zum_rueckfall() -> None:
-    client = FakeClient([_fixture("explainer_schemaverstoss.json")] * 4)
+def test_a_schema_violation_leads_to_exactly_one_retry_and_then_the_fallback() -> None:
+    client = FakeClient([_fixture("explainer_schema_violation.json")] * 4)
     layer = AiLayer(AiConfig(), client=client)
     result, _ = layer.run(_findings()[:1], CONTEXT)
 
     entry = result.findings[0]
     assert entry.ok is False
-    assert entry.note is not None and "Rueckfall" in entry.note
-    assert len(client.calls) == 2, "genau ein Retry, nicht mehr"
+    assert entry.note is not None and "falling back" in entry.note
+    assert len(client.calls) == 2, "exactly one retry, no more"
 
 
-def test_gueltige_antwort_wird_uebernommen() -> None:
+def test_a_valid_answer_is_taken_over() -> None:
     findings = _findings()[:1]
-    client = FakeClient([_fixture("explainer_gut.json")] * 3)
+    client = FakeClient([_fixture("explainer_good.json")] * 3)
     layer = AiLayer(AiConfig(), client=client)
     result, _ = layer.run(findings, CONTEXT)
 
     entry = result.findings[0]
     assert entry.ok is True
     assert entry.explanation is not None
-    assert entry.explanation.zusammenfassung
+    assert entry.explanation.summary
 
 
-def test_cloud_aufruf_ohne_opt_in_wird_blockiert() -> None:
+def test_a_cloud_call_without_opt_in_is_blocked() -> None:
     with pytest.raises(CloudCallBlockedError):
         assert_local("http://ollama.example.com:11434", allow_cloud=False)
     assert_local("http://localhost:11434", allow_cloud=False)
     assert_local("http://ollama.example.com:11434", allow_cloud=True)
 
 
-def test_ai_layer_meldet_cloud_blockade_statt_zu_werfen() -> None:
-    layer = AiLayer(AiConfig(base_url="http://irgendwo.example.com:11434"))
+def test_the_ai_layer_reports_a_cloud_block_instead_of_raising() -> None:
+    layer = AiLayer(AiConfig(base_url="http://somewhere.example.com:11434"))
     result, _ = layer.run(_findings(), CONTEXT)
     assert result.used is False
     assert result.unavailable_reason is not None
     assert "allow_cloud" in result.unavailable_reason
 
 
-def test_schema_enthaelt_keine_pruefungsfelder() -> None:
-    """Das Modell soll nicht behaupten koennen, seine Antwort sei geprueft."""
+def test_the_schema_contains_no_verification_fields() -> None:
+    """The model must not be able to claim its answer was verified."""
     schema = json_schema_for(ExplainerOutput)
     text = str(schema)
     assert "verified" not in text
     assert "verification_note" not in text
+
+
+def test_the_prompts_ask_for_the_field_names_the_schema_uses() -> None:
+    """Prompt and schema are one contract; a renamed field in only one breaks it."""
+    from wineventai.resources import read_resource_text
+
+    explainer = read_resource_text("ai/prompts/explainer.en.txt")
+    for field in ("summary", "hypotheses", "recommended_steps", "statement",
+                  "citable_events", "context_events", "knowledge_base"):
+        assert f'"{field}"' in explainer, field
+    correlator = read_resource_text("ai/prompts/correlator.en.txt")
+    for field in ("incidents", "title", "finding_ids", "rationale", "finding_id"):
+        assert f'"{field}"' in correlator, field

@@ -1,372 +1,372 @@
-# Mitgelieferte Wissensbasis.
+# Bundled knowledge base.
 #
-# Bewusst klein und geprueft statt gross und halbgar. Der Schluessel ist immer
-# provider + event_id.
+# Deliberately small and verified instead of large and half-baked. The key is
+# always provider + event_id.
 #
 # confidence:
-#   sicher   - Bedeutung belastbar; wird in den Prompt eingebettet.
-#   unsicher - Bedeutung plausibel, aber nicht verifiziert; NICHT in den Prompt,
-#              der Bericht kennzeichnet den Befund als ungeprueft.
-#   leer     - keine Bedeutung hinterlegt.
+#   verified   - meaning is reliable; embedded in the prompt.
+#   unverified - meaning is plausible but not verified; NOT in the prompt, the
+#                report marks the finding as unverified.
+#   empty      - no meaning on record.
 #
-# Die Texte sind eigene Formulierungen. Quellen werden verlinkt statt kopiert -
-# das loest Urheberrecht und Nachvollziehbarkeit in einem Zug, und der eigentliche
-# Wert steht ohnehin in "typische_ursachen" und "checks", nicht in der Doku.
+# The texts are our own wording. Sources are linked instead of copied - that
+# solves copyright and traceability in one go, and the real value is in
+# "typical_causes" and "checks" anyway, not in the documentation.
 
 - provider: Microsoft-Windows-Kernel-Power
   event_id: 41
-  bedeutung: >
-    Beim Hochfahren stellt Windows fest, dass das System zuvor nicht ordnungsgemaess
-    heruntergefahren wurde. Der Eintrag beschreibt damit rueckblickend das Ende der
-    vorherigen Sitzung.
-  typische_ursachen:
-    - Stromverlust
-    - Stoppfehler ohne abgeschlossene Protokollierung
-    - Abschaltung durch Ueberhitzungsschutz
+  meaning: >
+    At boot Windows notices that the system was not shut down properly before.
+    The entry therefore describes, in hindsight, the end of the previous
+    session.
+  typical_causes:
+    - Loss of power
+    - Stop error without completed logging
+    - Shutdown by overheating protection
   checks:
-    - Zeitnahen BugCheck 1001 suchen
-    - Minidump-Zeitstempel abgleichen
-    - WHEA-Logger-Ereignisse im selben Zeitraum pruefen
-  severity_default: kritisch
-  quelle_url: "https://learn.microsoft.com/windows/client-management/troubleshoot-event-id-41-restart"
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+    - Look for a BugCheck 1001 close in time
+    - Match the minidump timestamp
+    - Check WHEA-Logger events in the same period
+  severity_default: critical
+  source_url: "https://learn.microsoft.com/windows/client-management/troubleshoot-event-id-41-restart"
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: EventLog
   event_id: 6008
-  bedeutung: >
-    Das vorherige Herunterfahren des Systems war unerwartet. Wird beim naechsten
-    Start geschrieben und nennt den Zeitpunkt des letzten bekannten Betriebs.
-  typische_ursachen:
-    - Stromverlust
-    - Harter Ausschalter
-    - Absturz
+  meaning: >
+    The previous system shutdown was unexpected. Written at the next boot and
+    names the time of the last known operation.
+  typical_causes:
+    - Loss of power
+    - Hard power-off
+    - Crash
   checks:
-    - Mit Kernel-Power 41 abgleichen
-    - Bei virtuellen Maschinen die Host-Protokolle heranziehen
-  severity_default: kritisch
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+    - Match with Kernel-Power 41
+    - For virtual machines, consult the host logs
+  severity_default: critical
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: EventLog
   event_id: 6005
-  bedeutung: Der Ereignisprotokolldienst wurde gestartet. Markiert den Beginn einer Boot-Sitzung.
-  typische_ursachen: [Systemstart]
-  checks: [Fehlt davor ein 6006, war das Herunterfahren unsauber]
+  meaning: The event log service was started. Marks the beginning of a boot session.
+  typical_causes: [System start]
+  checks: [If the preceding 6006 is missing, the shutdown was unclean]
   severity_default: info
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: EventLog
   event_id: 6006
-  bedeutung: Der Ereignisprotokolldienst wurde gestoppt. Markiert ein regulaeres Herunterfahren.
-  typische_ursachen: [Regulaeres Herunterfahren oder Neustart]
-  checks: [Als Gegenstueck zu 6005 fuer die Zeitleiste verwenden]
+  meaning: The event log service was stopped. Marks a regular shutdown.
+  typical_causes: [Regular shutdown or restart]
+  checks: [Use as the counterpart of 6005 for the timeline]
   severity_default: info
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Microsoft-Windows-WER-SystemErrorReporting
   event_id: 1001
-  bedeutung: >
-    Zusammenfassung eines Stoppfehlers nach dem Neustart. Enthaelt Stopcode und
-    Parameter sowie den Pfad des erzeugten Speicherabbilds.
-  typische_ursachen:
-    - Treiberfehler
-    - Defekter Arbeitsspeicher
-    - Fehler im Speicherpfad
+  meaning: >
+    Summary of a stop error after the restart. Contains the stop code and
+    parameters as well as the path of the memory dump that was written.
+  typical_causes:
+    - Driver fault
+    - Defective memory
+    - Fault in the storage path
   checks:
-    - Stopcode bestimmen und zuordnen
-    - Zuletzt geaenderte Treiber pruefen
-    - Speicherabbild ausserhalb dieses Werkzeugs auswerten
-  severity_default: kritisch
-  quelle_url: "https://learn.microsoft.com/windows-hardware/drivers/debugger/bug-check-code-reference2"
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+    - Determine and look up the stop code
+    - Check recently changed drivers
+    - Analyze the memory dump outside this tool
+  severity_default: critical
+  source_url: "https://learn.microsoft.com/windows-hardware/drivers/debugger/bug-check-code-reference2"
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Service Control Manager
   event_id: 7031
-  bedeutung: >
-    Ein Dienst wurde unerwartet beendet. Der Eintrag nennt, wie oft das bereits
-    geschah und welche Wiederherstellungsaktion eingeleitet wurde.
-  typische_ursachen:
-    - Absturz des Dienstprozesses
-    - Fehlende Abhaengigkeit
-    - Speichermangel
+  meaning: >
+    A service terminated unexpectedly. The entry names how often this has
+    happened already and which recovery action was started.
+  typical_causes:
+    - Crash of the service process
+    - Missing dependency
+    - Out of memory
   checks:
-    - Zeitgleiche Application-Error-Eintraege zum selben Prozess suchen
-    - Wiederholungsmuster ueber die Zeit ansehen
-  severity_default: fehler
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+    - Look for simultaneous Application Error entries for the same process
+    - Look at the repetition pattern over time
+  severity_default: error
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Service Control Manager
   event_id: 7034
-  bedeutung: Ein Dienst wurde unerwartet beendet, ohne dass eine Wiederherstellung greift.
-  typische_ursachen: [Absturz des Dienstprozesses, Beendigung durch Sicherheitssoftware]
-  checks: [Dienstkonto pruefen, Protokolle der Anwendung selbst heranziehen]
-  severity_default: fehler
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  meaning: A service terminated unexpectedly without a recovery action taking effect.
+  typical_causes: [Crash of the service process, Termination by security software]
+  checks: [Check the service account, Consult the application's own logs]
+  severity_default: error
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Service Control Manager
   event_id: 7000
-  bedeutung: Ein Dienst konnte nicht gestartet werden.
-  typische_ursachen: [Fehlende Programmdatei, Falsches oder gesperrtes Dienstkonto]
-  checks: [Pfad der Programmdatei pruefen, Abhaengigkeiten pruefen]
-  severity_default: fehler
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  meaning: A service could not be started.
+  typical_causes: [Missing program file, Wrong or locked service account]
+  checks: [Check the path of the program file, Check the dependencies]
+  severity_default: error
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Service Control Manager
   event_id: 7009
-  bedeutung: >
-    Ein Dienst hat die Frist zur Verbindungsaufnahme beim Start ueberschritten.
-    Der Standardwert liegt bei 30 Sekunden.
-  typische_ursachen: [Langsame Hardware, Hohe Last beim Systemstart, Wartende Abhaengigkeit]
-  checks: [Scheitert der Start nur unter Last, Startreihenfolge der Dienste pruefen]
-  severity_default: fehler
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  meaning: >
+    A service exceeded the connection timeout while starting. The default is
+    30 seconds.
+  typical_causes: [Slow hardware, Heavy load at system start, Waiting dependency]
+  checks: [Does the start only fail under load, Check the start order of the services]
+  severity_default: error
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Service Control Manager
   event_id: 7045
-  bedeutung: Ein neuer Dienst wurde auf dem System eingerichtet.
-  typische_ursachen: [Softwareinstallation, Fernwartungswerkzeug, Dauerhafte Einrichtung durch Dritte]
-  checks: [Programmpfad auf ungewoehnliche Orte pruefen, Passt es zu einem bekannten Vorgang]
-  severity_default: fehler
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  meaning: A new service was installed on the system.
+  typical_causes: [Software installation, Remote maintenance tool, Persistence set up by a third party]
+  checks: [Check the program path for unusual locations, Does it match a known activity]
+  severity_default: error
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Application Error
   event_id: 1000
-  bedeutung: >
-    Eine Anwendung wurde durch eine unbehandelte Ausnahme beendet. Die
-    Ereignisdaten nennen Programm, Version, fehlerhaftes Modul und Ausnahmecode.
-  typische_ursachen:
-    - Fehler in der Anwendung oder einem geladenen Modul
-    - Beschaedigte Programmdateien
-    - Defekter Arbeitsspeicher bei vielen verschiedenen Programmen
+  meaning: >
+    An application was terminated by an unhandled exception. The event data
+    name program, version, faulting module and exception code.
+  typical_causes:
+    - Bug in the application or a loaded module
+    - Damaged program files
+    - Defective memory, when many different programs are affected
   checks:
-    - Immer dasselbe fehlerhafte Modul
-    - Zeitliche Naehe zu einer Installation oder einem Update
-  severity_default: fehler
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+    - Always the same faulting module
+    - Closeness in time to an installation or an update
+  severity_default: error
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Application Hang
   event_id: 1002
-  bedeutung: Eine Anwendung hat ueber laengere Zeit nicht auf Fenstermeldungen reagiert.
-  typische_ursachen: [Wartezeit auf Netz oder Datentraeger, Blockierende Erweiterung]
-  checks: [Zeitgleiche Datentraegerfehler pruefen, Betrifft es nur Netzlaufwerke]
-  severity_default: warnung
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  meaning: An application did not respond to window messages for a longer time.
+  typical_causes: [Waiting for network or disk, Blocking extension]
+  checks: [Check simultaneous disk errors, Does it only affect network drives]
+  severity_default: warning
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: disk
   event_id: 51
-  bedeutung: Beim Auslagern auf einen Datentraeger trat ein Fehler auf.
-  typische_ursachen: [Defekte Sektoren, Kabel oder Stromversorgung, Controllerfehler]
-  checks: [SMART-Werte pruefen, Datensicherung vor weiteren Tests]
-  severity_default: kritisch
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  meaning: An error was detected on a disk during a paging operation.
+  typical_causes: [Bad sectors, Cable or power supply, Controller fault]
+  checks: [Check SMART values, Back up before further tests]
+  severity_default: critical
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: disk
   event_id: 153
-  bedeutung: >
-    Ein E/A-Vorgang schlug fehl und wurde erfolgreich wiederholt. Der Zugriff
-    gelang also - der Datentraeger arbeitet aber bereits am Rand.
-  typische_ursachen: [Beginnender Datentraegerausfall, Zeitueberschreitung im Speicherpfad]
-  checks: [Rate ueber die Zeit beobachten, SMART-Werte pruefen]
-  severity_default: kritisch
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  meaning: >
+    An I/O operation failed and was retried successfully. The access did
+    succeed - but the disk is already working at its limit.
+  typical_causes: [Disk starting to fail, Timeout in the storage path]
+  checks: [Watch the rate over time, Check SMART values]
+  severity_default: critical
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: storahci
   event_id: 129
-  bedeutung: >
-    Der Speichercontroller hat das Geraet zurueckgesetzt, weil ein Befehl nicht
-    in der erwarteten Zeit beantwortet wurde.
-  typische_ursachen:
-    - Datentraeger antwortet zu langsam
-    - Firmware von Datentraeger oder Controller
-    - Energiesparfunktionen des Controllers
-  checks: [Firmware-Staende pruefen, Zeitliche Korrelation mit Anwendungs-Hangs]
-  severity_default: kritisch
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  meaning: >
+    The storage controller reset the device because a command was not answered
+    in the expected time.
+  typical_causes:
+    - Disk answers too slowly
+    - Firmware of disk or controller
+    - Power-saving functions of the controller
+  checks: [Check firmware versions, Correlation in time with application hangs]
+  severity_default: critical
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Ntfs
   event_id: 55
-  bedeutung: >
-    Die Struktur des Dateisystems auf einem Datentraeger ist beschaedigt. Der
-    Zustand bessert sich ohne Pruefung nicht von selbst.
-  typische_ursachen: [Unsauberes Herunterfahren beim Schreiben, Defekte Sektoren, Fehlerhafter Treiber]
-  checks: [Datensicherung pruefen, Datentraegerpruefung einplanen]
-  severity_default: kritisch
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  meaning: >
+    The structure of the file system on a disk is damaged. The state does not
+    improve by itself without a check.
+  typical_causes: [Unclean shutdown while writing, Bad sectors, Faulty driver]
+  checks: [Check the backup, Schedule a disk check]
+  severity_default: critical
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Microsoft-Windows-Kernel-PnP
   event_id: 219
-  bedeutung: Ein Treiber konnte fuer ein Geraet nicht geladen werden.
-  typische_ursachen: [Treiber fehlt oder passt nicht, Signaturpruefung schlaegt fehl]
-  checks: [Geraete-Manager auf Fehlercode pruefen, setupapi.dev.log heranziehen]
-  severity_default: warnung
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  meaning: A driver could not be loaded for a device.
+  typical_causes: [Driver missing or not matching, Signature check fails]
+  checks: [Check Device Manager for the error code, Consult setupapi.dev.log]
+  severity_default: warning
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Microsoft-Windows-WHEA-Logger
   event_id: 17
-  bedeutung: >
-    Die Hardware hat einen Fehler gemeldet und selbst korrigiert. Einzeln
-    unauffaellig, in steigender Rate ein Fruehwarnsignal.
-  typische_ursachen: [Arbeitsspeicher mit beginnenden Fehlern, PCIe-Uebertragungsfehler, Temperatur]
-  checks: [Rate ueber die Zeit betrachten, Betroffene Komponente aus den Ereignisdaten bestimmen]
-  severity_default: warnung
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  meaning: >
+    The hardware reported an error and corrected it itself. A single one is
+    unremarkable; at a rising rate it is an early warning.
+  typical_causes: [Memory starting to fail, PCIe transmission errors, Temperature]
+  checks: [Look at the rate over time, Determine the affected component from the event data]
+  severity_default: warning
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
-# Ab hier: bewusst NICHT als gesichert markiert. Diese Eintraege gehen nicht in
-# den Prompt, und Befunde dazu erscheinen im Bericht als ungeprueft. Das ist der
-# ganze Sinn des Feldes - lieber eine Luecke als eine erfundene Bedeutung.
+# From here on: deliberately NOT marked as verified. These entries do not go
+# into the prompt, and findings about them appear in the report as unverified.
+# That is the whole point of the field - better a gap than an invented meaning.
 
 - provider: Microsoft-Windows-WHEA-Logger
   event_id: 19
-  bedeutung: >
-    Korrigierter Hardwarefehler. Die genaue Abgrenzung zu 17 ist nicht
-    verifiziert und muss an echten Daten bestimmt werden.
-  typische_ursachen: []
-  checks: [Ereignisdaten mit denen einer 17 auf demselben System vergleichen]
-  severity_default: warnung
-  confidence: unsicher
+  meaning: >
+    Corrected hardware error. The exact distinction from 17 is not verified and
+    has to be determined on real data.
+  typical_causes: []
+  checks: [Compare the event data with those of a 17 on the same system]
+  severity_default: warning
+  confidence: unverified
 
 - provider: Microsoft-Windows-WHEA-Logger
   event_id: 18
-  bedeutung: ""
-  typische_ursachen: []
-  checks: [Bedeutung an echten Daten verifizieren, bevor sie hier eingetragen wird]
-  severity_default: kritisch
-  confidence: leer
+  meaning: ""
+  typical_causes: []
+  checks: [Verify the meaning on real data before entering it here]
+  severity_default: critical
+  confidence: empty
 
 - provider: Microsoft-Windows-WindowsUpdateClient
   event_id: 20
-  bedeutung: ""
-  typische_ursachen: []
-  checks: [Exakte Bedeutung dieser ID an echten Daten verifizieren]
-  severity_default: warnung
-  confidence: leer
+  meaning: ""
+  typical_causes: []
+  checks: [Verify the exact meaning of this id on real data]
+  severity_default: warning
+  confidence: empty
 
 - provider: Microsoft-Windows-DistributedCOM
   event_id: 10016
-  bedeutung: >
-    Eine Komponente wollte ein DCOM-Objekt starten und hatte dafuer nicht die
-    konfigurierten Rechte. Windows weicht praktisch immer aus; sichtbare
-    Auswirkungen gibt es fast nie.
-  typische_ursachen: [Standardberechtigungen von Windows-Komponenten, Frueher Zugriff im Startvorgang]
+  meaning: >
+    A component wanted to start a DCOM object and lacked the configured rights
+    to do so. Windows practically always falls back; there are almost never
+    visible effects.
+  typical_causes: [Default permissions of Windows components, Early access during startup]
   checks:
-    - Nur nachgehen bei exakt passendem Fehlverhalten
-    - Berechtigungen nicht vorsorglich aendern
-  severity_default: rauschen
-  quelle_url: "https://learn.microsoft.com/troubleshoot/windows-client/application-management/event-10016-logged-when-accessing-dcom"
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+    - Only follow up for an exactly matching malfunction
+    - Do not change permissions as a precaution
+  severity_default: noise
+  source_url: "https://learn.microsoft.com/troubleshoot/windows-client/application-management/event-10016-logged-when-accessing-dcom"
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Microsoft-Windows-Eventlog
   event_id: 1102
-  bedeutung: Das Sicherheitsprotokoll wurde geleert. Der Eintrag nennt das ausfuehrende Konto.
-  typische_ursachen: [Bewusste Bereinigung, Verschleierung von Spuren]
-  checks: [Konto und Zeitpunkt festhalten, Zeitnahe Fernanmeldungen pruefen]
-  severity_default: kritisch
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  meaning: The security log was cleared. The entry names the executing account.
+  typical_causes: [Deliberate cleanup, Covering tracks]
+  checks: [Record account and time, Check remote logons close in time]
+  severity_default: critical
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Microsoft-Windows-Eventlog
   event_id: 104
-  bedeutung: Ein Ereignisprotokoll wurde geleert. Betrifft auch andere Kanaele als Security.
-  typische_ursachen: [Bereinigung durch Verwaltungssoftware, Verschleierung]
-  checks: [Betroffenen Kanal festhalten, Mit Luecken in der Zeitachse abgleichen]
-  severity_default: fehler
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  meaning: An event log was cleared. Also covers channels other than Security.
+  typical_causes: [Cleanup by management software, Covering tracks]
+  checks: [Record the affected channel, Match against gaps in the timeline]
+  severity_default: error
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Microsoft-Windows-Security-Auditing
   event_id: 4625
-  bedeutung: >
-    Eine Anmeldung ist fehlgeschlagen. Die Ereignisdaten nennen Konto,
-    Anmeldetyp, Herkunft und Fehlerursache.
-  typische_ursachen: [Falsches Kennwort, Veraltete Dienstzugangsdaten, Systematisches Durchprobieren]
-  checks: [Ein Konto oder viele, Folgte eine erfolgreiche Anmeldung, Herkunft bestimmen]
-  severity_default: warnung
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  meaning: >
+    A logon failed. The event data name account, logon type, origin and the
+    reason for the failure.
+  typical_causes: [Wrong password, Outdated service credentials, Systematic guessing]
+  checks: [One account or many, Was a successful logon following, Determine the origin]
+  severity_default: warning
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Microsoft-Windows-Security-Auditing
   event_id: 4624
-  bedeutung: >
-    Eine Anmeldung war erfolgreich. Aussagekraeftig wird der Eintrag erst durch
-    den Anmeldetyp - Typ 10 ist eine interaktive Anmeldung ueber das Netz.
-  typische_ursachen: [Regulaerer Betrieb, Fernwartung, Zugriff mit erbeuteten Zugangsdaten]
-  checks: [Anmeldetyp bestimmen, Uhrzeit gegen den erwarteten Betrieb pruefen]
+  meaning: >
+    A logon was successful. The entry only becomes meaningful through the logon
+    type - type 10 is an interactive logon over the network.
+  typical_causes: [Regular operation, Remote maintenance, Access with stolen credentials]
+  checks: [Determine the logon type, Check the time against expected operation]
   severity_default: info
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Microsoft-Windows-Security-Auditing
   event_id: 4688
-  bedeutung: >
-    Ein neuer Prozess wurde erstellt. Die Kommandozeile steht nur darin, wenn die
-    entsprechende Ueberwachungsrichtlinie aktiv ist.
-  typische_ursachen: [Normaler Betrieb]
-  checks: [Ist die Kommandozeilenprotokollierung aktiv, Ausfuehrung aus temporaeren Pfaden]
+  meaning: >
+    A new process was created. The command line is only included when the
+    corresponding audit policy is active.
+  typical_causes: [Normal operation]
+  checks: [Is command-line logging active, Execution from temporary paths]
   severity_default: info
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Microsoft-Windows-PowerShell
   event_id: 4104
-  bedeutung: >
-    PowerShell hat ausgefuehrten Skriptcode protokolliert. Ohne aktiviertes
-    Script Block Logging entstehen diese Eintraege nur fuer als verdaechtig
-    eingestufte Bloecke - ihr Fehlen belegt also nichts.
-  typische_ursachen: [Administrationsskripte, Verwaltungssoftware, Ausfuehrung fremden Codes]
-  checks: [Ist Script Block Logging aktiv, Kodierte Befehle im Skriptblock]
-  severity_default: warnung
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  meaning: >
+    PowerShell logged executed script code. Without script block logging
+    enabled, these entries are only produced for blocks rated as suspicious -
+    so their absence proves nothing.
+  typical_causes: [Administration scripts, Management software, Execution of foreign code]
+  checks: [Is script block logging active, Encoded commands in the script block]
+  severity_default: warning
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"
 
 - provider: Microsoft-Windows-DNS-Client
   event_id: 1014
-  bedeutung: Eine Namensaufloesung lief in eine Zeitueberschreitung.
-  typische_ursachen: [Kurzzeitige Netzstoerung, DNS-Server nicht erreichbar, Energiesparen der Netzwerkkarte]
-  checks: [Nur bei Buendelung nachgehen, Netzpfad und DNS-Server pruefen]
-  severity_default: rauschen
-  confidence: sicher
-  geprueft_am: "2026-09-10"
-  geprueft_von: "seed"
+  meaning: A name resolution ran into a timeout.
+  typical_causes: [Brief network disturbance, DNS server unreachable, Power saving of the network adapter]
+  checks: [Only follow up when bundled, Check the network path and DNS server]
+  severity_default: noise
+  confidence: verified
+  checked_on: "2026-09-10"
+  checked_by: "seed"

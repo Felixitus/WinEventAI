@@ -1,26 +1,26 @@
-"""Ausfuehrung der Sonden und Zuordnung zu den Befunden.
+"""Running the probes and assigning the results to the findings.
 
-Drei Dinge entscheidet dieser Runner, und alle drei sind wichtiger als die
-Messung selbst:
+This runner decides three things, and all three matter more than the
+measurement itself:
 
-**Ob ueberhaupt gemessen werden darf.** Die Auswertung laeuft auf einem
-Laufverzeichnis, nicht auf einem Rechner. Wer den Lauf eines Servers auf seinem
-Arbeitsplatz auswertet - der Normalfall im 2nd Level - bekaeme sonst die
-Netzwerte seines eigenen Rechners in die Karte eines fremden Befunds
-geschrieben. Deshalb prueft der Runner den Rechnernamen aus den Kopfdaten gegen
-den lokalen und misst bei Abweichung nichts.
+**Whether measuring is allowed at all.** The analysis runs on a run directory,
+not on a machine. Whoever analyzes a server's run on their workstation - the
+normal case in 2nd level - would otherwise get the network values of their own
+machine written into the card of someone else's finding. The runner therefore
+checks the machine name from the header data against the local one and
+measures nothing if they differ.
 
-**Wie oft gemessen wird.** Eine Sonde bekommt alle Ziele auf einmal und wird
-genau einmal gestartet. Zwoelf Befunde zu DNS-Zeitueberschreitungen ergeben
-einen PowerShell-Aufruf, nicht zwoelf.
+**How often is measured.** A probe receives all targets at once and is started
+exactly once. Twelve findings about DNS timeouts make one PowerShell call, not
+twelve.
 
-**Was ein Ergebnis fuer den einzelnen Befund bedeutet.** Dasselbe Messergebnis
-haengt an Befunden unterschiedlichen Alters. Ein "spricht dagegen" wird deshalb
-zu "sagt dazu nichts" abgestuft, sobald zwischen Messung und letztem Vorkommen
-mehr als eine Stunde liegt - der Zeitabstand hat damit eine Folge im Code und
-steht nicht bloss als Satz darunter. Ein "stuetzt den Befund" wird nicht
-abgestuft: Ein Dienst, der heute noch steht, stuetzt den Ausfall von vorgestern
-sehr wohl.
+**What a result means for the individual finding.** The same measurement hangs
+on findings of different ages. A "speaks against it" is therefore downgraded to
+"says nothing about it" as soon as more than an hour lies between measurement
+and last occurrence - the time gap thus has a consequence in the code and does
+not merely stand as a sentence underneath. A "supports the finding" is not
+downgraded: a service that is still down today does support the failure of
+the day before yesterday.
 """
 
 from __future__ import annotations
@@ -47,27 +47,27 @@ from .storage import STORAGE_EVENTS, StorageProbe
 if TYPE_CHECKING:  # pragma: no cover
     from ..rules.engine import Finding
 
-#: Ab diesem Abstand entkraeftet eine Messung nichts mehr.
+#: From this gap on a measurement no longer refutes anything.
 FRESHNESS = timedelta(hours=1)
 
 ALL_PROBE_TITLES: dict[str, str] = {
-    "netz": NetworkProbe.title,
-    "dienst": ServiceProbe.title,
-    "datentraeger": StorageProbe.title,
+    NetworkProbe.probe_id: NetworkProbe.title,
+    ServiceProbe.probe_id: ServiceProbe.title,
+    StorageProbe.probe_id: StorageProbe.title,
 }
 
-#: Welche Provider/ID-Paare welche Sonde anfordern. Dieselbe Grundlage wie
-#: ``target_for``, nur ohne Sondenobjekt - denn wenn gar nicht gemessen werden
-#: kann, gibt es keine Sonde, wohl aber Befunde, die den Grund erfahren muessen.
+#: Which provider/id pairs request which probe. The same basis as
+#: ``target_for``, just without a probe object - because when nothing can be
+#: measured there is no probe, but there are findings that must learn the reason.
 CANDIDATE_KEYS: dict[str, frozenset[tuple[str, int]]] = {
-    "netz": frozenset(ROLE_FOR),
-    "dienst": SERVICE_EVENTS,
-    "datentraeger": STORAGE_EVENTS,
+    NetworkProbe.probe_id: frozenset(ROLE_FOR),
+    ServiceProbe.probe_id: SERVICE_EVENTS,
+    StorageProbe.probe_id: STORAGE_EVENTS,
 }
 
 
 def build_probes(config: Config, shell: ShellInfo) -> list[Probe]:
-    """Erzeugt die eingeschalteten Sonden."""
+    """Creates the enabled probes."""
     probes: list[Probe] = []
     settings = config.probes
     if settings.network:
@@ -94,16 +94,16 @@ def _disabled_probe_ids(config: Config) -> list[str]:
     settings = config.probes
     off = []
     if not settings.network:
-        off.append("netz")
+        off.append(NetworkProbe.probe_id)
     if not settings.services:
-        off.append("dienst")
+        off.append(ServiceProbe.probe_id)
     if not settings.storage:
-        off.append("datentraeger")
+        off.append(StorageProbe.probe_id)
     return off
 
 
 class ProbeRunner:
-    """Fuehrt die Sonden aus und haengt die Ergebnisse an die Befunde."""
+    """Runs the probes and attaches the results to the findings."""
 
     def __init__(
         self,
@@ -120,23 +120,23 @@ class ProbeRunner:
         self._shell = shell
         self._probes = probes
 
-    # --- Vorbedingungen ------------------------------------------------------
+    # --- Preconditions -------------------------------------------------------
 
     def blocked_reason(self) -> str | None:
-        """Warum ueberhaupt nicht gemessen werden kann. ``None`` heisst: es geht."""
-        # Der Rechnername kommt vor der Plattform: Wer den Lauf eines Servers
-        # woanders auswertet, soll das erfahren und nicht bloss lesen, dass die
-        # Sonden hier nicht laufen.
+        """Why nothing can be measured at all. ``None`` means: it works."""
+        # The machine name comes before the platform: whoever analyzes a
+        # server's run elsewhere should learn that, not merely read that the
+        # probes do not run here.
         if _short_host(self.run_host) != _short_host(self.local_host):
             return (
-                f"Der Lauf stammt von '{self.run_host}', ausgewertet wird auf "
-                f"'{self.local_host}'. Eine Messung wuerde den falschen Rechner "
-                "beschreiben und unterbleibt deshalb."
+                f"The run comes from '{self.run_host}', it is analyzed on "
+                f"'{self.local_host}'. A measurement would describe the wrong machine "
+                "and is therefore skipped."
             )
         if sys.platform != "win32":
             return (
-                "Sonden messen Windows-Zustaende und laufen nur auf Windows. "
-                f"Dieses System meldet sich als '{sys.platform}'."
+                "Probes measure Windows states and only run on Windows. "
+                f"This system reports itself as '{sys.platform}'."
             )
         if self._probes is None and self._shell is None:
             try:
@@ -145,28 +145,28 @@ class ProbeRunner:
                 return str(exc)
         return None
 
-    # --- Ausfuehrung ---------------------------------------------------------
+    # --- Execution -----------------------------------------------------------
 
     def attach(self, findings: list[Finding]) -> int:
-        """Misst und haengt die Ergebnisse an. Liefert die Zahl der Messungen."""
+        """Measures and attaches the results. Returns the number of measurements."""
         if not self.config.probes.enabled or not findings:
             return 0
 
         log = get_log()
-        grund = self.blocked_reason()
-        if grund is not None:
-            self._attach_blocked(findings, grund)
-            log.info("Sonden uebersprungen", grund=grund)
+        reason = self.blocked_reason()
+        if reason is not None:
+            self._attach_blocked(findings, reason)
+            log.info("Probes skipped", reason=reason)
             return 0
 
         probes = self._probes
         if probes is None:
-            if self._shell is None:  # pragma: no cover - blocked_reason hat sie beschafft
+            if self._shell is None:  # pragma: no cover - blocked_reason obtained it
                 return 0
             probes = build_probes(self.config, self._shell)
         self._attach_switched_off(findings)
 
-        gemessen = 0
+        measured = 0
         for probe in probes:
             targets: dict[str, list[Finding]] = {}
             for finding in findings:
@@ -176,22 +176,22 @@ class ProbeRunner:
             if not targets:
                 continue
 
-            log.info("Sonde laeuft", sonde=probe.probe_id, ziele=len(targets))
+            log.info("Probe running", probe=probe.probe_id, targets=len(targets))
             try:
                 results = probe.run(targets)
-            except Exception as exc:  # noqa: BLE001 - eine Sonde darf den Lauf nie toeten
-                log.warn("Sonde abgebrochen", sonde=probe.probe_id, fehler=str(exc))
+            except Exception as exc:  # noqa: BLE001 - a probe must never kill the run
+                log.warn("Probe aborted", probe=probe.probe_id, error=str(exc))
                 results = [
                     unavailable_result(
                         probe.probe_id,
                         ALL_PROBE_TITLES.get(probe.probe_id, probe.title),
-                        "Die Messung brach mit einem unerwarteten Fehler ab.",
+                        "The measurement aborted with an unexpected error.",
                         error=f"{type(exc).__name__}: {exc}",
                     )
                 ]
 
-            gemessen += self._distribute(results, targets, findings)
-        return gemessen
+            measured += self._distribute(results, targets, findings)
+        return measured
 
     def _distribute(
         self,
@@ -199,63 +199,63 @@ class ProbeRunner:
         targets: dict[str, list[Finding]],
         findings: list[Finding],
     ) -> int:
-        """Ordnet Messergebnisse den Befunden zu, die sie angefordert haben."""
-        alle_angefragt = [f for gruppe in targets.values() for f in gruppe]
-        gemessen = 0
+        """Assigns measurement results to the findings that requested them."""
+        all_requested = [f for group in targets.values() for f in group]
+        measured = 0
 
         for result in results:
             if result.target is not None and result.target in targets:
-                empfaenger = targets[result.target]
+                recipients = targets[result.target]
             else:
-                # Ergebnisse ohne Ziel - Abbruch, Zeitueberschreitung, Ausfall -
-                # gehen an jeden Befund, der diese Sonde angefordert hatte.
-                empfaenger = alle_angefragt
+                # Results without a target - abort, timeout, failure - go to
+                # every finding that requested this probe.
+                recipients = all_requested
 
-            for finding in empfaenger:
+            for finding in recipients:
                 finding.probes.append(self._for_finding(result, finding))
             if result.measured:
-                gemessen += 1
+                measured += 1
 
         _ = findings
-        return gemessen
+        return measured
 
     @staticmethod
     def _for_finding(result: ProbeResult, finding: Finding) -> ProbeResult:
-        kopie = result.model_copy(
+        copy = result.model_copy(
             update={
                 "finding_id": finding.finding_id,
                 "finding_last_seen_utc": finding.group.last_seen_utc,
             }
         )
-        if kopie.bearing is ProbeBearing.WEAKENS:
-            abstand = kopie.age
-            if abstand is None or abstand > FRESHNESS:
-                kopie.bearing = ProbeBearing.INCONCLUSIVE
-        return kopie
+        if copy.bearing is ProbeBearing.WEAKENS:
+            gap = copy.age
+            if gap is None or gap > FRESHNESS:
+                copy.bearing = ProbeBearing.INCONCLUSIVE
+        return copy
 
-    def _attach_blocked(self, findings: list[Finding], grund: str) -> None:
-        """Haengt an jeden Befund, der eine Sonde angefordert haette, den Grund."""
-        for probe_id, titel in ALL_PROBE_TITLES.items():
+    def _attach_blocked(self, findings: list[Finding], reason: str) -> None:
+        """Attaches the reason to every finding that would have requested a probe."""
+        for probe_id, title in ALL_PROBE_TITLES.items():
             if probe_id in _disabled_probe_ids(self.config):
                 continue
             for finding in self._candidates(findings, probe_id):
                 finding.probes.append(
-                    self._for_finding(unavailable_result(probe_id, titel, grund), finding)
+                    self._for_finding(unavailable_result(probe_id, title, reason), finding)
                 )
 
     def _attach_switched_off(self, findings: list[Finding]) -> None:
-        """Eine einzeln abgeschaltete Sonde bleibt in der Befundkarte sichtbar.
+        """A probe switched off individually stays visible in the finding card.
 
-        Ein "hier wurde nichts gemessen" ist eine Information; ein leeres Feld
-        ist eine Einladung, es fuer ein Messergebnis zu halten.
+        A "nothing was measured here" is information; an empty field is an
+        invitation to take it for a measurement.
         """
         for probe_id in _disabled_probe_ids(self.config):
-            titel = ALL_PROBE_TITLES[probe_id]
+            title = ALL_PROBE_TITLES[probe_id]
             for finding in self._candidates(findings, probe_id):
                 finding.probes.append(
                     self._for_finding(
                         disabled_result(
-                            probe_id, titel, "Diese Sonde ist in der Konfiguration abgeschaltet."
+                            probe_id, title, "This probe is disabled in the configuration."
                         ),
                         finding,
                     )
@@ -263,7 +263,7 @@ class ProbeRunner:
 
     @staticmethod
     def _candidates(findings: list[Finding], probe_id: str) -> list[Finding]:
-        """Welche Befunde diese Sonde angefordert haetten - ohne sie zu bauen."""
+        """Which findings would have requested this probe - without building it."""
         keys = CANDIDATE_KEYS.get(probe_id, frozenset())
         return [
             finding

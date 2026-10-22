@@ -1,19 +1,17 @@
-"""Retention: welche Rohdaten behalten werden.
+"""Retention: which raw data is kept.
 
-Eine reine Obergrenze je Kanal ist die falsche Konstruktion. Auf einem Rechner,
-der 400.000 mal DistributedCOM 10016 protokolliert, ist das Kontingent von
-Rauschen aufgebraucht, bevor der Bluescheck an der Reihe ist. Deshalb vier
-Prioritaetsklassen:
+A plain upper limit per channel is the wrong construction. On a machine that
+logs DistributedCOM 10016 400,000 times, the quota is used up by noise before
+the bug check gets its turn. Hence four priority classes:
 
-* **P1** Records, die eine Regel treffen - immer behalten.
-* **P2** Records im Kontextfenster um einen Marker - immer behalten.
-* **P3** ``level <= 2`` (kritisch/fehler) - bis zu einem Anteil des Kontingents.
-* **P4** alles uebrige - Reservoir-Sampling im Restkontingent, damit die
-  Stichprobe ueber das Zeitfenster streut, statt am Anfang zu klumpen.
+* **P1** records that hit a rule - always kept.
+* **P2** records in the context window around a marker - always kept.
+* **P3** ``level <= 2`` (critical/error) - up to a share of the quota.
+* **P4** everything else - reservoir sampling in the remaining quota, so the
+  sample spreads over the time window instead of clumping at the start.
 
-Das Aggregat ist davon NICHT betroffen: Zaehler, erstes und letztes Vorkommen
-und das Histogramm sehen jeden gelesenen Record. Abgeschnitten wird nur der
-Rohdatenanhang.
+The aggregate is NOT affected by this: counters, first and last occurrence and
+the histogram see every record read. Only the raw-data appendix is cut.
 """
 
 from __future__ import annotations
@@ -32,7 +30,7 @@ class Priority(IntEnum):
 
 
 class RetentionReservoir:
-    """Behaelt Records nach Prioritaet statt nach Ankunftsreihenfolge."""
+    """Keeps records by priority instead of by order of arrival."""
 
     def __init__(
         self,
@@ -49,10 +47,10 @@ class RetentionReservoir:
         self._seen_error = 0
         self.dropped = 0
 
-    # --- Aufnahme ------------------------------------------------------------
+    # --- Intake --------------------------------------------------------------
 
     def offer(self, record: EventRecord, priority: Priority) -> None:
-        """Bietet einen Record zur Aufbewahrung an."""
+        """Offers a record for retention."""
         if priority in (Priority.RULE_HIT, Priority.CONTEXT):
             self._kept[priority].append(record)
             return
@@ -75,7 +73,7 @@ class RetentionReservoir:
             self._replace_randomly(bucket, record, self._seen_other)
 
     def _replace_randomly(self, bucket: list[EventRecord], record: EventRecord, seen: int) -> None:
-        """Klassisches Reservoir-Sampling: gleiche Chance fuer jeden Record."""
+        """Classic reservoir sampling: the same chance for every record."""
         if not bucket:
             self.dropped += 1
             return
@@ -85,14 +83,14 @@ class RetentionReservoir:
         else:
             self.dropped += 1
 
-    # --- Ergebnis ------------------------------------------------------------
+    # --- Result --------------------------------------------------------------
 
     @property
     def truncated(self) -> bool:
         return self.dropped > 0
 
     def records(self) -> list[EventRecord]:
-        """Alle behaltenen Records, absteigend nach Zeit."""
+        """All retained records, descending by time."""
         out: list[EventRecord] = []
         seen_hashes: set[tuple[str, int, str]] = set()
         for priority in Priority:
@@ -107,9 +105,9 @@ class RetentionReservoir:
 
     def stats(self) -> dict[str, int]:
         return {
-            "regeltreffer": len(self._kept[Priority.RULE_HIT]),
-            "kontext": len(self._kept[Priority.CONTEXT]),
-            "fehlerstufe": len(self._kept[Priority.ERROR_LEVEL]),
-            "stichprobe": len(self._kept[Priority.OTHER]),
-            "verworfen": self.dropped,
+            "rule_hits": len(self._kept[Priority.RULE_HIT]),
+            "context": len(self._kept[Priority.CONTEXT]),
+            "error_level": len(self._kept[Priority.ERROR_LEVEL]),
+            "sample": len(self._kept[Priority.OTHER]),
+            "dropped": self.dropped,
         }

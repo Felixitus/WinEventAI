@@ -1,4 +1,4 @@
-"""Reporter: HTML, Markdown und JSON aus einem gemeinsamen Modell."""
+"""Reporter: HTML, Markdown and JSON from one shared model."""
 
 from .html import render_html, write_html
 from .json_out import render_json, write_json

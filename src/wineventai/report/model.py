@@ -1,8 +1,8 @@
-"""Das Berichtsmodell - eine Quelle fuer HTML, Markdown und JSON.
+"""The report model - one source for HTML, Markdown and JSON.
 
-Die drei Ausgabeformate entstehen aus diesem Modell, nicht auseinander. Sonst
-driften sie nach der dritten Aenderung auseinander, und der Markdown-Bericht
-sagt etwas anderes als der HTML-Bericht.
+The three output formats are produced from this model, not from each other.
+Otherwise they drift apart after the third change, and the Markdown report
+says something different from the HTML report.
 """
 
 from __future__ import annotations
@@ -11,8 +11,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..ai.pipeline import AiRunResult
-from ..collect.base import INCONCLUSIVE, STATUS_HINT_DE, SourceResult, SourceStatus
+from ..ai.pipeline import RULES_ONLY_NOTE, AiRunResult
+from ..collect.base import INCONCLUSIVE, STATUS_HINT, SourceResult, SourceStatus
 from ..collect.rundir import RunMeta
 from ..enrich.aggregate import EnrichmentResult
 from ..enrich.boot import BootSession
@@ -23,10 +23,10 @@ from ..security.indicators import SecurityReport
 
 
 class CoverageRow(BaseModel):
-    """Eine Zeile der Abdeckungstabelle.
+    """One row of the coverage table.
 
-    Diese Tabelle steht im Bericht VOR den Befunden. Sie ist der Unterschied
-    zwischen "keine Befunde" und "sechseinhalb Tage nie gelesen".
+    This table comes BEFORE the findings in the report. It is the difference
+    between "no findings" and "six and a half days never read".
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -46,7 +46,7 @@ class CoverageRow(BaseModel):
 def _format_range(start: datetime | None, end: datetime | None) -> str:
     if start is None or end is None:
         return "—"
-    return f"{start:%d.%m.%Y %H:%M} – {end:%d.%m.%Y %H:%M} UTC"
+    return f"{start:%Y-%m-%d %H:%M} – {end:%Y-%m-%d %H:%M} UTC"
 
 
 def coverage_rows(sources: list[SourceResult]) -> list[CoverageRow]:
@@ -54,7 +54,7 @@ def coverage_rows(sources: list[SourceResult]) -> list[CoverageRow]:
         CoverageRow(
             source_id=source.source_id,
             status=source.status,
-            hint=STATUS_HINT_DE.get(source.status, ""),
+            hint=STATUS_HINT.get(source.status, ""),
             requested=_format_range(source.requested_from_utc, source.requested_to_utc),
             covered=_format_range(source.covered_from_utc, source.covered_to_utc),
             records_read=source.records_read,
@@ -65,7 +65,7 @@ def coverage_rows(sources: list[SourceResult]) -> list[CoverageRow]:
         )
         for source in sources
     ]
-    # Unvollstaendiges zuerst - was fehlt, ist wichtiger als was da ist.
+    # Incomplete first - what is missing matters more than what is there.
     rows.sort(key=lambda row: (not row.inconclusive, row.source_id))
     return rows
 
@@ -78,7 +78,7 @@ class SeverityCount(BaseModel):
 
 
 class ReportModel(BaseModel):
-    """Alles, was in einen Bericht gehoert."""
+    """Everything that belongs in a report."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -103,7 +103,7 @@ class ReportModel(BaseModel):
     raw_appendix: list[EventRecord] = Field(default_factory=list)
     unknown_ids: list[dict[str, object]] = Field(default_factory=list)
 
-    # --- Abgeleitetes --------------------------------------------------------
+    # --- Derived -------------------------------------------------------------
 
     @property
     def has_coverage_problem(self) -> bool:
@@ -111,42 +111,39 @@ class ReportModel(BaseModel):
 
     @property
     def critical_findings(self) -> list[Finding]:
-        return [f for f in self.findings if f.severity is Severity.KRITISCH]
+        return [f for f in self.findings if f.severity is Severity.CRITICAL]
 
     @property
     def headline(self) -> str:
-        """Ein Satz, der zuerst gelesen wird."""
+        """The one sentence that is read first."""
         critical = len(self.critical_findings)
         if critical:
             return (
-                f"{critical} kritische Befunde im untersuchten Zeitraum."
+                f"{critical} critical findings in the examined period."
                 if critical > 1
-                else "Ein kritischer Befund im untersuchten Zeitraum."
+                else "One critical finding in the examined period."
             )
         if self.findings:
-            return f"Keine kritischen Befunde, {len(self.findings)} Befunde insgesamt."
+            return f"No critical findings, {len(self.findings)} findings in total."
         if self.has_coverage_problem:
             return (
-                "Keine Befunde - aber der Zeitraum wurde nicht vollstaendig erhoben. "
-                "Siehe Abdeckung."
+                "No findings - but the period was not collected completely. "
+                "See coverage."
             )
-        return "Keine Befunde im untersuchten Zeitraum."
+        return "No findings in the examined period."
 
     @property
     def ai_note(self) -> str:
         if self.ai.used:
             rejected = self.ai.rejected_statements
-            base = f"Modell {self.ai.model}, Kontextfenster {self.ai.num_ctx}."
+            base = f"Model {self.ai.model}, context window {self.ai.num_ctx}."
             if rejected:
                 return (
-                    f"{base} {rejected} Aussage(n) wurden verworfen, weil sie nicht durch "
-                    "Ereignisse aus der Eingabe gedeckt waren."
+                    f"{base} {rejected} statement(s) were rejected because they were not "
+                    "covered by events from the input."
                 )
-            return f"{base} Alle Aussagen sind durch Ereignisse aus der Eingabe gedeckt."
-        return (
-            self.ai.unavailable_reason
-            or "Der KI-Layer wurde nicht verwendet. Der Bericht entsteht aus der Regel-Engine."
-        )
+            return f"{base} All statements are covered by events from the input."
+        return self.ai.unavailable_reason or f"The AI layer was not used. {RULES_ONLY_NOTE}"
 
 
 def build_report(
@@ -162,7 +159,7 @@ def build_report(
     raw_appendix_limit: int,
     redacted: bool,
 ) -> ReportModel:
-    """Setzt das Berichtsmodell zusammen."""
+    """Assembles the report model."""
     visible = [finding for finding in findings if not finding.suppressed]
     noise = [finding for finding in findings if finding.suppressed]
 

@@ -1,12 +1,12 @@
-"""Oberflaeche: Modelle, Statusmeldungen, Detailtext und Worker.
+"""User interface: models, status messages, detail text and worker.
 
-Getestet wird ohne Bildschirm (``QT_QPA_PLATFORM=offscreen``) und ohne echte
-Widgets, wo es geht. Die Modelle liegen genau deshalb in einer eigenen Datei:
-Sie sind der Teil der Oberflaeche, der Aussagen ueber Daten trifft - und der
-gehoert getestet.
+Tested without a screen (``QT_QPA_PLATFORM=offscreen``) and without real
+widgets where possible. The models live in a file of their own exactly for
+this reason: they are the part of the interface that makes statements about
+data - and that belongs tested.
 
-Der Worker wird direkt aufgerufen statt ueber einen Thread. Was hier interessiert,
-ist welche Signale mit welchem Inhalt kommen, nicht ob Qt Threads kann.
+The worker is called directly instead of via a thread. What matters here is
+which signals arrive with which content, not whether Qt can do threads.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-pytest.importorskip("PySide6", reason='Oberflaeche ist optional (pip install -e ".[gui]")')
+pytest.importorskip("PySide6", reason='The user interface is optional (pip install -e ".[gui]")')
 
 from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
@@ -48,79 +48,79 @@ def report(fixture_run):
     return analyze_run(fixture_run, config).report
 
 
-# --- Modelle -----------------------------------------------------------------
+# --- Models ------------------------------------------------------------------
 
 
-def test_abdeckungsmodell_zeigt_unvollstaendiges_zuerst(qapp, report) -> None:
+def test_the_coverage_model_shows_incomplete_first(qapp, report) -> None:
     model = CoverageModel(report.coverage)
     assert model.rowCount() == len(report.coverage)
 
-    erste = model.row_at(0)
-    assert erste is not None and erste.inconclusive, (
-        "was fehlt, gehoert nach oben - sonst liest jemand ueber die Luecke hinweg"
+    first = model.row_at(0)
+    assert first is not None and first.inconclusive, (
+        "what is missing belongs at the top - otherwise someone reads past the gap"
     )
 
 
-def test_abdeckungsmodell_faerbt_unvollstaendige_zeilen(qapp, report) -> None:
+def test_the_coverage_model_colors_incomplete_rows(qapp, report) -> None:
     model = CoverageModel(report.coverage)
     index = model.index(0, 1)
-    farbe = model.data(index, Qt.ItemDataRole.ForegroundRole)
-    hintergrund = model.data(index, Qt.ItemDataRole.BackgroundRole)
+    color = model.data(index, Qt.ItemDataRole.ForegroundRole)
+    background = model.data(index, Qt.ItemDataRole.BackgroundRole)
 
-    assert farbe is not None
-    assert hintergrund is not None, "unvollstaendige Quellen brauchen einen Hintergrund"
+    assert color is not None
+    assert background is not None, "incomplete sources need a background"
 
 
-def test_abdeckungsmodell_markiert_die_luecke(qapp, report) -> None:
+def test_the_coverage_model_marks_the_gap(qapp, report) -> None:
     model = CoverageModel(report.coverage)
-    texte = [
+    texts = [
         model.data(model.index(row, CoverageModel.COL_COVERED), Qt.ItemDataRole.DisplayRole)
         for row in range(model.rowCount())
     ]
-    assert any("[Luecke]" in text for text in texte)
+    assert any("[gap]" in text for text in texts)
 
 
-def test_befundmodell_bildet_alle_sichtbaren_befunde_ab(qapp, report) -> None:
+def test_the_findings_model_maps_all_visible_findings(qapp, report) -> None:
     model = FindingsModel(report.findings)
     assert model.rowCount() == len(report.findings)
     assert model.columnCount() == 4
 
 
-def test_befundmodell_zeigt_provider_nur_im_tooltip(qapp, report) -> None:
-    """Die Liste ist zum Scannen da.
+def test_the_findings_model_shows_the_provider_only_in_the_tooltip(qapp, report) -> None:
+    """The list is for scanning.
 
-    'Microsoft-Windows-WER-SystemErrorReporting:1001' in einer Spalte frisst die
-    halbe Breite und draengt den Befundnamen weg, nach dem man eigentlich sucht.
+    'Microsoft-Windows-WER-SystemErrorReporting:1001' in a column eats half the
+    width and pushes away the finding name one is actually looking for.
     """
     model = FindingsModel(report.findings)
-    zeilen = [
-        model.data(model.index(row, spalte), Qt.ItemDataRole.DisplayRole)
+    cells = [
+        model.data(model.index(row, column), Qt.ItemDataRole.DisplayRole)
         for row in range(model.rowCount())
-        for spalte in range(model.columnCount())
+        for column in range(model.columnCount())
     ]
-    assert not any(":" in str(text) and "Microsoft-Windows" in str(text) for text in zeilen)
+    assert not any(":" in str(text) and "Microsoft-Windows" in str(text) for text in cells)
 
     tooltip = model.data(model.index(0, 1), Qt.ItemDataRole.ToolTipRole)
     assert ":" in tooltip
 
 
-def test_befundmodell_faerbt_nach_schwere(qapp, report) -> None:
+def test_the_findings_model_colors_by_severity(qapp, report) -> None:
     model = FindingsModel(report.findings)
-    farbe = model.data(model.index(0, 0), Qt.ItemDataRole.ForegroundRole)
-    assert farbe is not None
-    assert farbe.name() == "#a52218", "kritisch muss rot sein, nicht die Akzentfarbe"
+    color = model.data(model.index(0, 0), Qt.ItemDataRole.ForegroundRole)
+    assert color is not None
+    assert color.name() == "#a52218", "critical must be red, not the accent color"
 
 
-def test_befundmodell_markiert_eskalation(qapp, report) -> None:
+def test_the_findings_model_marks_escalation(qapp, report) -> None:
     model = FindingsModel(report.findings)
-    texte = [
+    texts = [
         model.data(model.index(row, 0), Qt.ItemDataRole.DisplayRole)
         for row in range(model.rowCount())
     ]
-    assert any("↑" in text for text in texte), "eine Eskalation muss sichtbar sein"
+    assert any("↑" in text for text in texts), "an escalation must be visible"
 
 
-def test_befundmodell_meldet_fehlende_wissensbasis_im_tooltip(qapp) -> None:
+def test_the_findings_model_reports_a_missing_knowledge_base_in_the_tooltip(qapp) -> None:
     from helpers import make_record
     from wineventai.enrich.aggregate import Enricher
     from wineventai.rules.engine import RuleEngine
@@ -134,99 +134,111 @@ def test_befundmodell_meldet_fehlende_wissensbasis_im_tooltip(qapp) -> None:
     model = FindingsModel(findings)
 
     tooltip = model.data(model.index(0, 1), Qt.ItemDataRole.ToolTipRole)
-    assert "Keine gesicherte Bedeutung" in tooltip
+    assert "No verified meaning" in tooltip
 
 
-def test_leeres_modell_stuerzt_nicht_ab(qapp) -> None:
+def test_an_empty_model_does_not_crash(qapp) -> None:
     model = FindingsModel()
     assert model.rowCount() == 0
     assert model.data(model.index(0, 0), Qt.ItemDataRole.DisplayRole) is None
 
 
-# --- Kopfzeilen --------------------------------------------------------------
+# --- Headlines ---------------------------------------------------------------
 
 
-def test_kennzahlenzeile_nennt_reduktion_und_rauschen(qapp, report) -> None:
+def test_the_figures_line_names_reduction_and_noise(qapp, report) -> None:
     text = summary_line(report)
-    assert "Ereignisse" in text
-    assert "Reduktion" in text
-    assert "Rauschen" in text
+    assert "events" in text
+    assert "reduction" in text
+    assert "noise" in text
 
 
-def test_warnbanner_erscheint_bei_luecken(qapp, report) -> None:
-    warnung = coverage_warning(report)
-    assert warnung is not None
-    assert "nicht vollstaendig erhoben" in warnung
-    assert "channel:Security" in warnung
+def test_the_warning_banner_appears_on_gaps(qapp, report) -> None:
+    warning = coverage_warning(report)
+    assert warning is not None
+    assert "not collected completely" in warning
+    assert "channel:Security" in warning
 
 
-def test_warnbanner_bleibt_aus_wenn_alles_erhoben_wurde(qapp, report) -> None:
-    sauber = report.model_copy(
+def test_the_warning_banner_stays_off_when_everything_was_collected(qapp, report) -> None:
+    clean = report.model_copy(
         update={"coverage": [row for row in report.coverage if not row.inconclusive]}
     )
-    assert coverage_warning(sauber) is None
+    assert coverage_warning(clean) is None
 
 
-# --- Statusleiste ------------------------------------------------------------
+# --- Status bar --------------------------------------------------------------
 
 
-def test_status_unterscheidet_dienst_und_modell() -> None:
-    """Dieselbe Unterscheidung wie im Client - hier nur als Anzeige."""
-    fehlt = Environment(
+def test_the_status_separates_service_and_model() -> None:
+    """The same distinction as in the client - here only as display."""
+    missing = Environment(
         model_name="qwen2.5:14b", ollama_reachable=True, ollama_model_present=False,
         ollama_models=["llama3.1:8b"],
     )
-    text, problem = fehlt.ollama_line()
-    assert problem and "fehlt" in text
-    assert "nicht erreichbar" not in text
+    text, problem = missing.ollama_line()
+    assert problem and "missing" in text
+    assert "No Ollama" not in text
 
-    tot = Environment(model_name="qwen2.5:14b", ollama_reachable=False)
-    text, problem = tot.ollama_line()
-    assert problem and "nicht erreichbar" in text
+    down = Environment(model_name="qwen2.5:14b", ollama_reachable=False)
+    text, problem = down.ollama_line()
+    assert problem and "No Ollama" in text
+    assert "rule engine only" in text, "without Ollama the tool still works - say so"
 
-    gut = Environment(
+    good = Environment(
         model_name="qwen2.5:14b", ollama_reachable=True, ollama_model_present=True
     )
-    _, problem = gut.ollama_line()
+    _, problem = good.ollama_line()
     assert not problem
 
 
-def test_status_kennt_den_harten_blocker() -> None:
+def test_the_status_shows_a_refused_cloud_model() -> None:
+    env = Environment(
+        model_name="glm-5.2:cloud", ollama_reachable=True, ollama_model_present=True,
+        ollama_remote_model=True,
+    )
+    text, problem = env.ollama_line()
+    assert problem and "Cloud model" in text
+    assert not env.ollama_usable
+    assert "allow_cloud" in env.tooltip()
+
+
+def test_the_status_knows_the_hard_blocker() -> None:
     assert not Environment().ready_to_collect
     assert Environment(powershell="C:/pwsh.exe").ready_to_collect
 
 
-def test_tooltip_nennt_die_vorhandenen_modelle() -> None:
+def test_the_tooltip_names_the_available_models() -> None:
     env = Environment(
-        model_name="fehlt:latest", ollama_reachable=True, ollama_model_present=False,
+        model_name="missing:latest", ollama_reachable=True, ollama_model_present=False,
         ollama_models=["a:1", "b:2"], config_path="C:/x.yaml",
     )
     tooltip = env.tooltip()
     assert "a:1, b:2" in tooltip
-    assert "nicht vorhanden" in tooltip, "eine fehlende Konfiguration gehoert in den Tooltip"
+    assert "not present" in tooltip, "a missing configuration belongs in the tooltip"
 
 
-# --- Detailansicht -----------------------------------------------------------
+# --- Detail view -------------------------------------------------------------
 
 
-def test_detail_enthaelt_bedeutung_und_pruefschritte(qapp, report) -> None:
+def test_the_detail_contains_meaning_and_checks(qapp, report) -> None:
     finding = report.findings[0]
     html = detail.finding_detail_html(finding)
 
     assert finding.rule_name in html
     assert str(finding.severity).upper() in html
-    for check in finding.empfohlene_checks[:1]:
+    for check in finding.recommended_checks[:1]:
         assert check[:30] in html
 
 
-def test_detail_kennzeichnet_fehlende_wissensbasis(qapp, report) -> None:
-    finding = report.findings[0].model_copy(update={"kb_confidence": "fehlt"})
+def test_the_detail_marks_a_missing_knowledge_base(qapp, report) -> None:
+    finding = report.findings[0].model_copy(update={"kb_confidence": "missing"})
     html = detail.finding_detail_html(finding)
-    assert "Keine gesicherte Bedeutung" in html
+    assert "No verified meaning" in html
 
 
-def test_detail_zeigt_verworfene_modellaussagen(qapp, fixture_run) -> None:
-    """Verwerfen darf nicht still passieren - auch nicht in der Oberflaeche."""
+def test_the_detail_shows_rejected_model_statements(qapp, fixture_run) -> None:
+    """Rejecting must not happen silently - not in the interface either."""
     from test_ai import FakeClient, _fixture
     from wineventai.ai.pipeline import AiLayer
     from wineventai.ai.redaction import Redactor
@@ -236,23 +248,23 @@ def test_detail_zeigt_verworfene_modellaussagen(qapp, fixture_run) -> None:
     kb = KnowledgeBase.open_default()
     layer = AiLayer(
         config.ai,
-        client=FakeClient([_fixture("explainer_erfundene_id.json")] * 60),
+        client=FakeClient([_fixture("explainer_invented_id.json")] * 60),
         kb=kb,
         redactor=Redactor(),
     )
     result = analyze_run(fixture_run, config, kb=kb, ai_layer=layer)
     kb.close()
 
-    treffer = [
+    pages = [
         detail.finding_detail_html(f, result.report.ai) for f in result.report.findings
     ]
-    assert any("Verworfen:" in html for html in treffer)
+    assert any("Rejected:" in html for html in pages)
 
 
-def test_detail_maskiert_html_in_meldungen(qapp, report) -> None:
-    """Eine Meldung aus einem Ereignisprotokoll ist Fremdtext."""
+def test_the_detail_escapes_html_in_messages(qapp, report) -> None:
+    """A message from an event log is foreign text."""
     finding = report.findings[0].model_copy(
-        update={"bedeutung": "<script>alert(1)</script> & mehr"}
+        update={"meaning": "<script>alert(1)</script> & more"}
     )
     html = detail.finding_detail_html(finding)
     assert "<script>" not in html
@@ -262,57 +274,57 @@ def test_detail_maskiert_html_in_meldungen(qapp, report) -> None:
 # --- Worker ------------------------------------------------------------------
 
 
-def test_worker_wertet_vorhandenen_lauf_aus(qapp, fixture_run) -> None:
+def test_the_worker_analyzes_an_existing_run(qapp, fixture_run) -> None:
     config = load_config(overrides={"ai": {"enabled": False}})
     worker = RunWorker(config, existing_run=fixture_run.path)
 
-    ergebnisse: list[tuple[object, object]] = []
-    fehler: list[tuple[str, str]] = []
-    fortschritt: list[int] = []
-    worker.finished_ok.connect(lambda run, res: ergebnisse.append((run, res)))
-    worker.failed.connect(lambda titel, text: fehler.append((titel, text)))
-    worker.progress.connect(lambda percent, _text: fortschritt.append(percent))
+    results: list[tuple[object, object]] = []
+    errors: list[tuple[str, str]] = []
+    progress: list[int] = []
+    worker.finished_ok.connect(lambda run, res: results.append((run, res)))
+    worker.failed.connect(lambda title, text: errors.append((title, text)))
+    worker.progress.connect(lambda percent, _text: progress.append(percent))
 
     worker.run()
 
-    assert not fehler, fehler
-    assert len(ergebnisse) == 1
-    assert fortschritt[-1] == 100
-    assert ergebnisse[0][1].report.findings
+    assert not errors, errors
+    assert len(results) == 1
+    assert progress[-1] == 100
+    assert results[0][1].report.findings
 
 
-def test_worker_meldet_fehler_statt_zu_werfen(qapp, tmp_path) -> None:
-    """Eine Oberflaeche darf nie kommentarlos sterben."""
+def test_the_worker_reports_errors_instead_of_raising(qapp, tmp_path) -> None:
+    """An interface must never die without a word."""
     config = load_config(overrides={"ai": {"enabled": False}})
-    worker = RunWorker(config, existing_run=tmp_path / "gibt-es-nicht")
+    worker = RunWorker(config, existing_run=tmp_path / "does-not-exist")
 
-    fehler: list[tuple[str, str]] = []
-    worker.failed.connect(lambda titel, text: fehler.append((titel, text)))
+    errors: list[tuple[str, str]] = []
+    worker.failed.connect(lambda title, text: errors.append((title, text)))
     worker.run()
 
-    assert len(fehler) == 1
-    assert fehler[0][0] == "Nicht gefunden"
+    assert len(errors) == 1
+    assert errors[0][0] == "Not found"
 
 
-def test_worker_spiegelt_das_anwendungslog(qapp, fixture_run) -> None:
+def test_the_worker_mirrors_the_application_log(qapp, fixture_run) -> None:
     config = load_config(overrides={"ai": {"enabled": False}})
     worker = RunWorker(config, existing_run=fixture_run.path)
 
-    zeilen: list[str] = []
-    worker.log_line.connect(zeilen.append)
+    lines: list[str] = []
+    worker.log_line.connect(lines.append)
     worker.run()
 
-    assert zeilen, "waehrend eines langen Laufs muss sichtbar sein, dass etwas passiert"
-    assert any("Regeln geladen" in zeile for zeile in zeilen)
+    assert lines, "during a long run it must be visible that something is happening"
+    assert any("Rules loaded" in line for line in lines)
 
 
-def test_logstream_ueberlebt_den_tod_seines_workers(qapp, fixture_run) -> None:
-    """Der Bug, den erst die Testreihenfolge zutage gefoerdert hat.
+def test_the_log_stream_survives_the_death_of_its_worker(qapp, fixture_run) -> None:
+    """The bug that only the test order brought to light.
 
-    Das Anwendungslog ist prozessweit, der Log-Stream haengt aber an EINEM
-    Worker. Wird der eingesammelt und irgendetwas loggt noch, warf Qt
-    "Signal source has been deleted" - und riss alles Nachfolgende mit.
-    Ein Logger darf die Anwendung nie umbringen.
+    The application log is process-wide, but the log stream hangs on ONE
+    worker. If that is collected and something still logs, Qt raised "Signal
+    source has been deleted" - and tore down everything that followed. A logger
+    must never kill the application.
     """
     from wineventai.gui.worker import GuiLogStream
 
@@ -320,14 +332,14 @@ def test_logstream_ueberlebt_den_tod_seines_workers(qapp, fixture_run) -> None:
     worker = RunWorker(config, existing_run=fixture_run.path)
     stream = GuiLogStream(worker.log_line)
 
-    del worker  # der Besitzer des Signals ist weg
+    del worker  # the owner of the signal is gone
 
-    assert stream.write("darf nicht werfen") > 0
+    assert stream.write("must not raise") > 0
     stream.flush()
 
 
-def test_worker_loest_das_prozessweite_log_wieder(qapp, fixture_run) -> None:
-    """Nach dem Lauf darf das globale Log nicht mehr auf den Worker zeigen."""
+def test_the_worker_releases_the_process_wide_log(qapp, fixture_run) -> None:
+    """After the run the global log must no longer point to the worker."""
     from wineventai.applog import get_log
 
     config = load_config(overrides={"ai": {"enabled": False}})
@@ -335,57 +347,57 @@ def test_worker_loest_das_prozessweite_log_wieder(qapp, fixture_run) -> None:
     worker.run()
     del worker
 
-    get_log().info("nach dem Lauf")  # wirft nicht mehr
+    get_log().info("after the run")  # does not raise any more
 
 
-# --- Abdeckungshinweis und Ereignisse ohne Bewertung -------------------------
+# --- Coverage note and events without assessment -----------------------------
 
 
-def test_abdeckung_zeigt_den_vermerk_sichtbar_und_nicht_nur_im_tooltip(qapp, report) -> None:
+def test_the_coverage_shows_the_note_visibly_and_not_only_in_the_tooltip(qapp, report) -> None:
     model = CoverageModel(report.coverage)
-    vermerkte = [row for row, item in enumerate(report.coverage) if item.note]
-    assert vermerkte, "die Fixture braucht mindestens eine Quelle mit Vermerk"
+    noted = [row for row, item in enumerate(report.coverage) if item.note]
+    assert noted, "the fixture needs at least one source with a note"
 
-    zeile = vermerkte[0]
-    text = model.data(model.index(zeile, CoverageModel.COL_NOTE), Qt.ItemDataRole.DisplayRole)
-    assert text == report.coverage[zeile].note.strip()
+    row = noted[0]
+    text = model.data(model.index(row, CoverageModel.COL_NOTE), Qt.ItemDataRole.DisplayRole)
+    assert text == report.coverage[row].note.strip()
 
 
-def test_abdeckung_ohne_vermerk_zeigt_den_statustext_statt_einer_leeren_zelle(
+def test_coverage_without_a_note_shows_the_status_text_instead_of_an_empty_cell(
     qapp, report
 ) -> None:
     model = CoverageModel(report.coverage)
-    for zeile in range(model.rowCount()):
-        text = model.data(model.index(zeile, CoverageModel.COL_NOTE), Qt.ItemDataRole.DisplayRole)
-        assert text, f"leere Hinweiszelle in Zeile {zeile}"
+    for row in range(model.rowCount()):
+        text = model.data(model.index(row, CoverageModel.COL_NOTE), Qt.ItemDataRole.DisplayRole)
+        assert text, f"empty note cell in row {row}"
 
 
 UNKNOWN_ROWS = [
-    {"provider": "P-Info", "event_id": 1, "anzahl": 500, "kanal": "K", "level": 4,
-     "beispielmeldung": "nur Information"},
-    {"provider": "P-Fehler", "event_id": 2, "anzahl": 3, "kanal": "K/Operational", "level": 2,
-     "beispielmeldung": "Fehler 0x80070005"},
-    {"provider": "P-Kritisch", "event_id": 3, "anzahl": 1, "kanal": "K", "level": 1,
-     "beispielmeldung": "kritisch"},
+    {"provider": "P-Info", "event_id": 1, "count": 500, "channel": "K", "level": 4,
+     "sample_message": "information only"},
+    {"provider": "P-Error", "event_id": 2, "count": 3, "channel": "K/Operational", "level": 2,
+     "sample_message": "Error 0x80070005"},
+    {"provider": "P-Critical", "event_id": 3, "count": 1, "channel": "K", "level": 1,
+     "sample_message": "critical"},
 ]
 
 
-def test_unbewertete_ereignisse_stehen_schwerste_stufe_zuerst(qapp) -> None:
+def test_events_without_assessment_list_the_most_severe_level_first(qapp) -> None:
     model = UnknownEventsModel(UNKNOWN_ROWS)
 
-    stufen = [model.data(model.index(row, 0), Qt.ItemDataRole.DisplayRole)
+    levels = [model.data(model.index(row, 0), Qt.ItemDataRole.DisplayRole)
               for row in range(model.rowCount())]
-    assert stufen == ["kritisch", "fehler", "info"]
+    assert levels == ["critical", "error", "information"]
 
 
-def test_unbewertete_ereignisse_sagen_nicht_hinterlegt_statt_leer_zu_bleiben(qapp) -> None:
+def test_events_without_assessment_say_not_on_record_instead_of_staying_empty(qapp) -> None:
     model = UnknownEventsModel(UNKNOWN_ROWS)
 
-    bedeutung = model.data(model.index(0, 5), Qt.ItemDataRole.DisplayRole)
-    assert bedeutung == "nicht hinterlegt"
+    meaning = model.data(model.index(0, 5), Qt.ItemDataRole.DisplayRole)
+    assert meaning == "not on record"
 
 
-def test_filter_zeigt_standardmaessig_nur_kritisch_und_fehler(qapp) -> None:
+def test_the_filter_shows_only_critical_and_error_by_default(qapp) -> None:
     proxy = UnknownEventsFilter()
     proxy.setSourceModel(UnknownEventsModel(UNKNOWN_ROWS))
 
@@ -394,7 +406,7 @@ def test_filter_zeigt_standardmaessig_nur_kritisch_und_fehler(qapp) -> None:
     assert proxy.rowCount() == 3
 
 
-def test_filter_sucht_auch_in_der_meldung(qapp) -> None:
+def test_the_filter_also_searches_the_message(qapp) -> None:
     proxy = UnknownEventsFilter()
     proxy.setSourceModel(UnknownEventsModel(UNKNOWN_ROWS))
     proxy.set_text("0x80070005")
@@ -402,7 +414,7 @@ def test_filter_sucht_auch_in_der_meldung(qapp) -> None:
     assert proxy.rowCount() == 1
 
 
-def test_hauptfenster_fuellt_den_reiter_ohne_bewertung(qapp, fixture_run) -> None:
+def test_the_main_window_fills_the_tab_without_assessment(qapp, fixture_run) -> None:
     from wineventai.gui.main_window import MainWindow
 
     config = load_config(overrides={"ai": {"enabled": False}})
@@ -410,8 +422,8 @@ def test_hauptfenster_fuellt_den_reiter_ohne_bewertung(qapp, fixture_run) -> Non
     window = MainWindow(config)
     try:
         window._on_finished(fixture_run, result)
-        titel = window.tabs.tabText(MainWindow.UNKNOWN_TAB_INDEX)
-        assert titel == f"Ohne Bewertung ({len(result.report.unknown_ids)})"
+        title = window.tabs.tabText(MainWindow.UNKNOWN_TAB_INDEX)
+        assert title == f"{MainWindow.UNKNOWN_TAB_TITLE} ({len(result.report.unknown_ids)})"
         assert window.unknown_model.rowCount() == len(result.report.unknown_ids)
     finally:
         if window._probe:

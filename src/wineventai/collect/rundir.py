@@ -1,12 +1,12 @@
-"""Das Laufverzeichnis - die Grenze zwischen Erhebung und Auswertung.
+"""The run directory - the boundary between collection and analysis.
 
-Der Collector schreibt nicht in Objekte, sondern in ein Verzeichnis; alles
-danach liest nur noch von dort. Das loest vier Dinge auf einmal:
+The collector does not write into objects but into a directory; everything
+after it reads only from there. That solves four things at once:
 
-* Live-Erhebung und mitgebrachter .evtx-Export muenden in denselben Code.
-* ``analyze --run <dir>`` laeuft mit geaenderten Regeln gegen dieselben Rohdaten.
-* Das Evidenz-Manifest entsteht aus Dateien, die ohnehin dort liegen.
-* KI-Buendel und Modellantwort liegen nachvollziehbar nebeneinander.
+* Live collection and a brought-along .evtx export end up in the same code.
+* ``analyze --run <dir>`` runs changed rules against the same raw data.
+* The evidence manifest is built from files that are there anyway.
+* AI bundle and model answer sit traceably side by side.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ SOURCES = "sources.json"
 
 
 class RunMeta(BaseModel):
-    """Kopfdaten eines Laufs. Wandert unveraendert in das Evidenz-Manifest."""
+    """Header data of a run. Goes unchanged into the evidence manifest."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -59,21 +59,21 @@ def _utc_offset_minutes(moment: datetime) -> int:
 
 
 def _timezone_name() -> str:
-    return datetime.now().astimezone().tzname() or "unbekannt"
+    return datetime.now().astimezone().tzname() or "unknown"
 
 
 def _current_account() -> str:
     try:
         return getpass.getuser()
-    except Exception:  # pragma: no cover - Umgebung ohne Benutzerkontext
-        return "unbekannt"
+    except Exception:  # pragma: no cover - environment without a user context
+        return "unknown"
 
 
 def is_admin() -> bool:
-    """Prueft Adminrechte. Ausserhalb von Windows immer False."""
+    """Checks for admin rights. Always False outside Windows."""
     if sys.platform != "win32":
         return False
-    try:  # pragma: no cover - nur auf Windows erreichbar
+    try:  # pragma: no cover - only reachable on Windows
         import ctypes
 
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
@@ -86,12 +86,12 @@ def default_runs_root() -> Path:
 
 
 class RunDirectory:
-    """Zugriff auf ein Laufverzeichnis, lesend wie schreibend."""
+    """Access to a run directory, for reading and writing."""
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
 
-    # --- Anlegen und oeffnen -------------------------------------------------
+    # --- Create and open ------------------------------------------------------
 
     @classmethod
     def create(
@@ -137,10 +137,10 @@ class RunDirectory:
     def open(cls, path: Path) -> RunDirectory:
         run = cls(path)
         if not run.meta_path.is_file():
-            raise FileNotFoundError(f"Kein Laufverzeichnis: {path} (es fehlt {RUN_META})")
+            raise FileNotFoundError(f"Not a run directory: {path} ({RUN_META} is missing)")
         return run
 
-    # --- Pfade ---------------------------------------------------------------
+    # --- Paths ---------------------------------------------------------------
 
     @property
     def meta_path(self) -> Path:
@@ -181,7 +181,7 @@ class RunDirectory:
     def raw_path(self, source_id: str) -> Path:
         return self.raw_dir / f"{safe_name(source_id)}.ndjson"
 
-    # --- Lesen und schreiben -------------------------------------------------
+    # --- Read and write -----------------------------------------------------
 
     def write_meta(self, meta: RunMeta) -> None:
         self.meta_path.parent.mkdir(parents=True, exist_ok=True)
@@ -226,8 +226,8 @@ class RunDirectory:
 
 
 def safe_name(value: str) -> str:
-    """Macht einen Kanalnamen dateisystemtauglich, ohne ihn unkenntlich zu machen."""
+    """Makes a channel name file-system safe without making it unrecognizable."""
     out = []
     for char in value:
         out.append(char if char.isalnum() or char in "-_." else "_")
-    return "".join(out).strip("_") or "quelle"
+    return "".join(out).strip("_") or "source"

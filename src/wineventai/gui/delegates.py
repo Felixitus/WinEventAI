@@ -1,12 +1,11 @@
-"""Zeichner fuer Tabellenzellen.
+"""Painters for table cells.
 
-Bislang war der Schweregrad nur farbiger Text. Das funktioniert, hat aber eine
-Schwaeche: Farbe allein ist die einzige Unterscheidung, und wer rot und orange
-schlecht auseinanderhaelt - rund acht Prozent der Maenner - sieht eine Liste
-gleich aussehender Zeilen.
+The severity used to be colored text only. That works but has a weakness:
+color is the only distinction, and whoever has trouble telling red from orange
+- about eight percent of men - sees a list of identical-looking rows.
 
-Ein Chip loest das: Er hat eine Flaeche, einen Rahmen und Text. Die Farbe ist
-dann eine von drei Unterscheidungen statt der einzigen.
+A chip solves this: it has an area, a border and text. Color is then one of
+three distinctions instead of the only one.
 """
 
 from __future__ import annotations
@@ -25,11 +24,11 @@ def _paint_cell_background(
     option: QStyleOptionViewItem,
     index: QModelIndex,
 ) -> None:
-    """Zeichnet Zellhintergrund, Auswahl und Hover - aber keinen Text.
+    """Paints cell background, selection and hover - but no text.
 
-    Nicht ueber ``super().paint``: ``QStyledItemDelegate.paint`` ruft
-    ``initStyleOption`` intern noch einmal auf und fuellt den zuvor geleerten
-    Text wieder. Der Chip-Text stand dann doppelt und verschoben uebereinander.
+    Not via ``super().paint``: ``QStyledItemDelegate.paint`` calls
+    ``initStyleOption`` internally once more and fills in the text that was
+    cleared before. The chip text then appeared twice, shifted on top of itself.
     """
     opt = QStyleOptionViewItem(option)
     delegate.initStyleOption(opt, index)
@@ -40,7 +39,7 @@ def _paint_cell_background(
 
 
 class SeverityChipDelegate(QStyledItemDelegate):
-    """Malt den Schweregrad als gerundeten Chip statt als farbigen Text."""
+    """Paints the severity as a rounded chip instead of colored text."""
 
     PADDING_X = 9
     PADDING_Y = 3
@@ -54,8 +53,8 @@ class SeverityChipDelegate(QStyledItemDelegate):
             super().paint(painter, option, index)
             return
 
-        # Auswahl und Hover kommen vom Stylesheet - erst den Untergrund, dann
-        # den Chip darauf, sonst verschwindet die Zeilenmarkierung.
+        # Selection and hover come from the stylesheet - first the background,
+        # then the chip on top, otherwise the row highlight disappears.
         _paint_cell_background(self, painter, option, index)
 
         severity = self._severity(text)
@@ -68,24 +67,24 @@ class SeverityChipDelegate(QStyledItemDelegate):
         painter.setFont(font)
 
         metrics = painter.fontMetrics()
-        breite = metrics.horizontalAdvance(text) + 2 * self.PADDING_X
-        hoehe = metrics.height() + 2 * self.PADDING_Y
+        width = metrics.horizontalAdvance(text) + 2 * self.PADDING_X
+        height = metrics.height() + 2 * self.PADDING_Y
 
         rect = QRectF(
             option.rect.left() + 6,
-            option.rect.center().y() - hoehe / 2 + 1,
-            min(breite, max(option.rect.width() - 8, 10)),
-            hoehe,
+            option.rect.center().y() - height / 2 + 1,
+            min(width, max(option.rect.width() - 8, 10)),
+            height,
         )
 
-        vordergrund = QColor(theme.SEVERITY_COLOR.get(severity, theme.NOISE))
-        hintergrund = QColor(theme.SEVERITY_BG.get(severity, "#f0eff2"))
+        foreground = QColor(theme.SEVERITY_COLOR.get(severity, theme.NOISE))
+        background = QColor(theme.SEVERITY_BG.get(severity, "#f0eff2"))
 
-        painter.setBrush(hintergrund)
-        painter.setPen(QPen(vordergrund, 1.0))
+        painter.setBrush(background)
+        painter.setPen(QPen(foreground, 1.0))
         painter.drawRoundedRect(rect, self.RADIUS, self.RADIUS)
 
-        painter.setPen(QPen(vordergrund))
+        painter.setPen(QPen(foreground))
         painter.drawText(rect, int(Qt.AlignmentFlag.AlignCenter), text)
         painter.restore()
 
@@ -97,27 +96,27 @@ class SeverityChipDelegate(QStyledItemDelegate):
 
     @staticmethod
     def _severity(text: str) -> Severity:
-        """Liest die Schwere aus dem Anzeigetext, der ein '↑' tragen kann."""
-        sauber = text.replace("↑", "").strip()
+        """Reads the severity from the display text, which may carry an '↑'."""
+        clean = text.replace("↑", "").strip()
         try:
-            return Severity(sauber)
+            return Severity(clean)
         except ValueError:
-            return Severity.RAUSCHEN
+            return Severity.NOISE
 
 
 class StatusChipDelegate(QStyledItemDelegate):
-    """Dasselbe fuer die Abdeckungstabelle: Status als Chip.
+    """The same for the coverage table: status as a chip.
 
-    Hier traegt der Chip zusaetzlich Bedeutung, die Farbe allein nicht traegt -
-    ein unvollstaendiger Kanal soll auch beim Ueberfliegen auffallen.
+    Here the chip additionally carries meaning that color alone does not - an
+    incomplete channel should stand out even when skimming.
     """
 
     def paint(
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex
     ) -> None:
         text = str(index.data(Qt.ItemDataRole.DisplayRole) or "")
-        farbe = index.data(Qt.ItemDataRole.ForegroundRole)
-        if not text or farbe is None:
+        color = index.data(Qt.ItemDataRole.ForegroundRole)
+        if not text or color is None:
             super().paint(painter, option, index)
             return
 
@@ -132,23 +131,23 @@ class StatusChipDelegate(QStyledItemDelegate):
         painter.setFont(font)
 
         metrics = painter.fontMetrics()
-        breite = metrics.horizontalAdvance(text) + 18
-        hoehe = metrics.height() + 6
+        width = metrics.horizontalAdvance(text) + 18
+        height = metrics.height() + 6
         rect = QRectF(
             option.rect.left() + 6,
-            option.rect.center().y() - hoehe / 2,
-            min(breite, max(option.rect.width() - 8, 10)),
-            hoehe,
+            option.rect.center().y() - height / 2,
+            min(width, max(option.rect.width() - 8, 10)),
+            height,
         )
 
-        vordergrund = QColor(farbe)
-        hintergrund = QColor(vordergrund)
-        hintergrund.setAlpha(28)
+        foreground = QColor(color)
+        background = QColor(foreground)
+        background.setAlpha(28)
 
-        painter.setBrush(hintergrund)
-        painter.setPen(QPen(vordergrund, 1.0))
+        painter.setBrush(background)
+        painter.setPen(QPen(foreground, 1.0))
         painter.drawRoundedRect(rect, 8.0, 8.0)
-        painter.setPen(QPen(vordergrund))
+        painter.setPen(QPen(foreground))
         painter.drawText(rect, int(Qt.AlignmentFlag.AlignCenter), text)
         painter.restore()
 

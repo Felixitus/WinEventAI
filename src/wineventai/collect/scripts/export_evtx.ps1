@@ -1,13 +1,14 @@
 <#
-    export_evtx.ps1 - Originalkanaele fuer das Evidenz-Bundle exportieren.
+    export_evtx.ps1 - export original channels for the evidence bundle.
 
-    Der Hash im Manifest geht spaeter ueber DIESE Dateien, nicht ueber unseren
-    JSON-Auszug: sonst hasht man die eigene Interpretation statt der Evidenz.
+    The hash in the manifest is later taken over THESE files, not over our JSON
+    extract: otherwise one hashes one's own interpretation instead of the
+    evidence.
 
-    Achtung: 'wevtutil epl' exportiert ohne /q den GESAMTEN Kanal, nicht das
-    Zeitfenster. Wird ein XPath uebergeben, ist die exportierte Datei bereits
-    eine Auswahl - das gehoert dann ins Manifest, und genau das schreibt dieses
-    Skript in seine Statuszeile.
+    Caution: without /q, 'wevtutil epl' exports the WHOLE channel, not the time
+    window. If an XPath is passed, the exported file is already a selection -
+    that belongs in the manifest, and that is exactly what this script writes
+    into its status line.
 #>
 [CmdletBinding()]
 param(

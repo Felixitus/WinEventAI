@@ -1,9 +1,9 @@
-"""Collector: Erhebung roher Records je Quelle in ein Laufverzeichnis."""
+"""Collectors: gather raw records per source into a run directory."""
 
 from .base import (
     EXCEPTION_STATUS,
     INCONCLUSIVE,
-    STATUS_HINT_DE,
+    STATUS_HINT,
     CollectedSource,
     EventSource,
     SourceResult,
@@ -25,7 +25,7 @@ from .shell import (
 __all__ = [
     "EXCEPTION_STATUS",
     "INCONCLUSIVE",
-    "STATUS_HINT_DE",
+    "STATUS_HINT",
     "CachedChannelCollector",
     "CollectedSource",
     "CollectionAborted",

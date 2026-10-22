@@ -1,8 +1,8 @@
-"""Arbeitsliste: Provider/ID-Paare ohne Eintrag in der Wissensbasis.
+"""Work list: provider/id pairs without an entry in the knowledge base.
 
-Jeder Lauf schreibt die beruehrten Paare ohne KB-Eintrag nach
-``unknown_ids.csv``. So waechst die Wissensbasis aus echten Faellen statt aus
-abgeschriebener Dokumentation.
+Every run writes the touched pairs without a KB entry to ``unknown_ids.csv``.
+That way the knowledge base grows from real cases instead of copied
+documentation.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pathlib import Path
 from ..enrich.aggregate import EnrichmentResult
 from .store import KnowledgeBase
 
-HEADER = ("provider", "event_id", "anzahl", "kanal", "level", "beispielmeldung")
+HEADER = ("provider", "event_id", "count", "channel", "level", "sample_message")
 
 
 def collect_unknown(
@@ -22,7 +22,7 @@ def collect_unknown(
     *,
     excerpt_chars: int = 200,
 ) -> list[dict[str, object]]:
-    """Findet alle Gruppen, zu denen die Wissensbasis nichts Gesichertes sagt."""
+    """Finds all groups about which the knowledge base says nothing verified."""
     rows: dict[tuple[str, int], dict[str, object]] = {}
     for group in enrichment.groups:
         entry = kb.get(group.provider, group.event_id)
@@ -35,19 +35,19 @@ def collect_unknown(
             rows[key] = {
                 "provider": group.provider,
                 "event_id": group.event_id,
-                "anzahl": group.count,
-                "kanal": group.channel,
+                "count": group.count,
+                "channel": group.channel,
                 "level": group.level,
-                "beispielmeldung": sample,
+                "sample_message": sample,
             }
         else:
-            existing["anzahl"] = int(existing["anzahl"]) + group.count
+            existing["count"] = int(existing["count"]) + group.count
 
-    return sorted(rows.values(), key=lambda row: -int(row["anzahl"]))
+    return sorted(rows.values(), key=lambda row: -int(row["count"]))
 
 
 def write_unknown_csv(path: Path, rows: list[dict[str, object]]) -> Path:
-    """Schreibt die Arbeitsliste. UTF-8 mit BOM, damit Excel sie richtig oeffnet."""
+    """Writes the work list. UTF-8 with BOM so Excel opens it correctly."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(HEADER), delimiter=";")

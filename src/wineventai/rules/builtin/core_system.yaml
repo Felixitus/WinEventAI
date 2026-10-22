@@ -1,133 +1,133 @@
-# Kernbefunde aus dem System-Kanal.
+# Core findings from the System channel.
 #
-# Achtung auf die Provider-Angaben: Kernel-Power 41 liegt im System-Kanal,
-# nicht im Kanal Microsoft-Windows-Kernel-Power/Operational. Und 1001 ist
-# BugCheck NUR unter dem Provider WER-SystemErrorReporting - dieselbe ID
-# existiert im Application-Kanal als Windows Error Reporting.
+# Mind the provider values: Kernel-Power 41 lives in the System channel, not in
+# the channel Microsoft-Windows-Kernel-Power/Operational. And 1001 is BugCheck
+# ONLY under the provider WER-SystemErrorReporting - the same id exists in the
+# Application channel as Windows Error Reporting.
 
 - id: kernel-power-41
-  name: Unsauberer Neustart (Kernel-Power 41)
+  name: Unclean restart (Kernel-Power 41)
   match:
     channel: System
     provider: Microsoft-Windows-Kernel-Power
     event_id: 41
-  severity: kritisch
-  bedeutung: >
-    Das System wurde neu gestartet, ohne dass zuvor ein regulaeres Herunterfahren
-    protokolliert wurde. Windows stellt das beim naechsten Start nachtraeglich fest.
-  typische_ursachen:
-    - Stromausfall oder instabile Spannungsversorgung
-    - Bluescreen, bei dem die Protokollierung nicht mehr abgeschlossen wurde
-    - Ueberhitzung mit Abschaltung durch die Firmware
-    - Netzteil oder Mainboard defekt
-  empfohlene_checks:
-    - Liegt zeitnah ein BugCheck 1001 mit Stopcode vor?
-    - Existiert ein Minidump mit passendem Zeitstempel?
-    - WHEA-Logger 17 oder 19 im selben Zeitraum?
-    - "Bei mehreren Rechnern am selben Ort: gemeinsame Stromversorgung pruefen."
-  referenz: "https://learn.microsoft.com/windows/client-management/troubleshoot-event-id-41-restart"
+  severity: critical
+  meaning: >
+    The system restarted without a regular shutdown having been logged before.
+    Windows notices this afterwards, at the next boot.
+  typical_causes:
+    - Power failure or unstable power supply
+    - Blue screen during which logging could not be completed
+    - Overheating with shutdown by the firmware
+    - Defective power supply unit or mainboard
+  recommended_checks:
+    - Is there a BugCheck 1001 with a stop code close in time?
+    - Is there a minidump with a matching timestamp?
+    - WHEA-Logger 17 or 19 in the same period?
+    - "With several machines at the same site: check the shared power supply."
+  reference: "https://learn.microsoft.com/windows/client-management/troubleshoot-event-id-41-restart"
   threshold:
     count_min: 1
     escalate_above: 3
-    escalate_to: kritisch
+    escalate_to: critical
 
 - id: eventlog-6008
-  name: Unerwartetes Herunterfahren (EventLog 6008)
+  name: Unexpected shutdown (EventLog 6008)
   match:
     channel: System
     provider: EventLog
     event_id: 6008
-  severity: kritisch
-  bedeutung: >
-    Das vorige Herunterfahren war unerwartet. Der Eintrag entsteht beim Hochfahren
-    und beschreibt damit die VORHERIGE Sitzung, nicht die laufende.
-  typische_ursachen:
-    - Harter Ausschalter oder Stromverlust
-    - Absturz ohne abgeschlossene Protokollierung
-    - Erzwungener Neustart durch Watchdog oder Virtualisierungsschicht
-  empfohlene_checks:
-    - Zeitpunkt mit Kernel-Power 41 abgleichen - beide beschreiben denselben Vorfall.
-    - "Bei virtuellen Maschinen: Host-Protokolle pruefen, nicht nur den Gast."
-  referenz: "https://learn.microsoft.com/windows/client-management/troubleshoot-event-id-41-restart"
+  severity: critical
+  meaning: >
+    The previous shutdown was unexpected. The entry is written at boot and
+    therefore describes the PREVIOUS session, not the current one.
+  typical_causes:
+    - Hard power-off or loss of power
+    - Crash without completed logging
+    - Forced restart by a watchdog or the virtualization layer
+  recommended_checks:
+    - Match the time with Kernel-Power 41 - both describe the same incident.
+    - "For virtual machines: check the host logs, not only the guest."
+  reference: "https://learn.microsoft.com/windows/client-management/troubleshoot-event-id-41-restart"
 
 - id: bugcheck-1001
-  name: Bluescreen (BugCheck 1001)
+  name: Blue screen (BugCheck 1001)
   match:
     channel: System
     provider: Microsoft-Windows-WER-SystemErrorReporting
     event_id: 1001
-  severity: kritisch
-  bedeutung: >
-    Das System hat einen Stoppfehler ausgeloest. Der Stopcode und die Parameter
-    stehen in den Ereignisdaten und benennen die betroffene Komponente.
-  typische_ursachen:
-    - Fehlerhafter oder unpassender Treiber
-    - Defekter Arbeitsspeicher
-    - Dateisystem- oder Datentraegerfehler
-    - Uebertaktung oder instabile Spannungsversorgung
-  empfohlene_checks:
-    - Stopcode aus den Ereignisdaten notieren und zuordnen.
-    - Passenden Minidump suchen und - ausserhalb dieses Werkzeugs - auswerten.
-    - Zuletzt geaenderte Treiber pruefen (Kernel-PnP 219, Windows Update).
-    - Arbeitsspeichertest, wenn kein Treiber auffaellt.
-  referenz: "https://learn.microsoft.com/windows-hardware/drivers/debugger/bug-check-code-reference2"
+  severity: critical
+  meaning: >
+    The system raised a stop error. The stop code and its parameters are in the
+    event data and name the affected component.
+  typical_causes:
+    - Faulty or unsuitable driver
+    - Defective memory
+    - File system or disk errors
+    - Overclocking or unstable power supply
+  recommended_checks:
+    - Note the stop code from the event data and look it up.
+    - Find the matching minidump and analyze it - outside this tool.
+    - Check recently changed drivers (Kernel-PnP 219, Windows Update).
+    - Run a memory test if no driver stands out.
+  reference: "https://learn.microsoft.com/windows-hardware/drivers/debugger/bug-check-code-reference2"
 
-- id: scm-dienst-beendet
-  name: Dienst unerwartet beendet (SCM 7031/7034)
+- id: scm-service-terminated
+  name: Service terminated unexpectedly (SCM 7031/7034)
   match:
     channel: System
     provider: Service Control Manager
     event_id: [7031, 7034]
-  severity: fehler
-  bedeutung: >
-    Ein Dienst wurde beendet, ohne sich ordnungsgemaess abzumelden. 7031 nennt
-    zusaetzlich die vom Dienst-Manager eingeleitete Wiederherstellungsaktion.
-  typische_ursachen:
-    - Absturz des Dienstprozesses
-    - Abhaengigkeit nicht verfuegbar (Netzwerk, Datenbank, Datentraeger)
-    - Speichermangel
-    - Beendigung durch Sicherheitssoftware
-  empfohlene_checks:
-    - Zeitgleiche Application-Error-Eintraege (1000) zum selben Prozess suchen.
-    - Wiederholt sich der Vorfall im selben Stundenraster? Dann Zeitplan pruefen.
-    - Dienstkonto und dessen Berechtigungen pruefen.
+  severity: error
+  meaning: >
+    A service ended without signing off properly. 7031 additionally names the
+    recovery action started by the service control manager.
+  typical_causes:
+    - Crash of the service process
+    - Dependency unavailable (network, database, disk)
+    - Out of memory
+    - Termination by security software
+  recommended_checks:
+    - Look for simultaneous Application Error entries (1000) for the same process.
+    - Does the incident repeat on the same hourly pattern? Then check schedules.
+    - Check the service account and its permissions.
   threshold:
     count_min: 1
     escalate_above: 20
-    escalate_to: kritisch
+    escalate_to: critical
 
-- id: scm-dienst-startet-nicht
-  name: Dienst startet nicht (SCM 7000/7009)
+- id: scm-service-start-failed
+  name: Service does not start (SCM 7000/7009)
   match:
     channel: System
     provider: Service Control Manager
     event_id: [7000, 7009]
-  severity: fehler
-  bedeutung: >
-    Ein Dienst liess sich nicht starten (7000) oder hat die Verbindungsfrist
-    beim Start ueberschritten (7009).
-  typische_ursachen:
-    - Fehlende oder beschaedigte Programmdatei
-    - Falsches oder gesperrtes Dienstkonto
-    - Abhaengiger Dienst nicht gestartet
-    - Zeitueberschreitung auf langsamer Hardware oder bei hoher Last beim Start
-  empfohlene_checks:
-    - Pfad zur Programmdatei und deren Vorhandensein pruefen.
-    - Abhaengigkeiten des Dienstes ansehen.
-    - Bei 7009 pruefen, ob der Start nur unter Last scheitert.
+  severity: error
+  meaning: >
+    A service could not be started (7000) or exceeded the connection timeout
+    while starting (7009).
+  typical_causes:
+    - Missing or damaged program file
+    - Wrong or locked service account
+    - Dependent service not started
+    - Timeout on slow hardware or under heavy load at startup
+  recommended_checks:
+    - Check the path to the program file and that it exists.
+    - Look at the service's dependencies.
+    - For 7009, check whether the start only fails under load.
 
 - id: eventlog-boot-marker
-  name: Boot-Session-Marker (EventLog 6005/6006)
+  name: Boot session marker (EventLog 6005/6006)
   match:
     channel: System
     provider: EventLog
     event_id: [6005, 6006]
   severity: info
-  bedeutung: >
-    Start und Stopp des Ereignisprotokolldienstes. Diese beiden Ereignisse
-    begrenzen eine Boot-Sitzung und sind die Grundlage der Zeitleiste.
-  typische_ursachen:
-    - Regulaerer Start bzw. regulaeres Herunterfahren
-  empfohlene_checks:
-    - Fehlt zu einem 6005 das vorangehende 6006, war das Herunterfahren unsauber.
-  classification: befund
+  meaning: >
+    Start and stop of the event log service. These two events delimit a boot
+    session and are the basis of the timeline.
+  typical_causes:
+    - Regular start or regular shutdown
+  recommended_checks:
+    - If a 6005 lacks the preceding 6006, the shutdown was unclean.
+  classification: finding

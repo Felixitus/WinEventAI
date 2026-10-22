@@ -1,15 +1,14 @@
-"""Laden und Zusammenfuehren der Konfiguration.
+"""Loading and merging the configuration.
 
-Rangfolge, schwaechste zuerst:
+Precedence, weakest first:
 
-1. mitgelieferte ``wineventai.default.yaml``
+1. bundled ``wineventai.default.yaml``
 2. ``%PROGRAMDATA%\\WinEventAI\\wineventai.yaml``
-3. explizit uebergebene Datei (``--config``)
-4. Einzelwerte von der Kommandozeile
+3. explicitly passed file (``--config``)
+4. single values from the command line
 
-Zusammengefuehrt wird rekursiv je Schluessel; Listen werden ersetzt, nicht
-verschmolzen. Eine halb ueberschriebene Kanalliste waere schwerer zu erklaeren
-als eine ganz ersetzte.
+Merging is recursive per key; lists are replaced, not merged. A half-overridden
+channel list would be harder to explain than a fully replaced one.
 """
 
 from __future__ import annotations
@@ -43,14 +42,13 @@ def _read_yaml(path: Path) -> dict[str, Any]:
         return {}
     if not isinstance(data, dict):
         raise ValueError(
-            f"{path}: erwartet wurde eine YAML-Abbildung, "
-            f"gefunden {type(data).__name__}"
+            f"{path}: expected a YAML mapping, found {type(data).__name__}"
         )
     return data
 
 
 def default_config_dict() -> dict[str, Any]:
-    """Die mitgelieferten Vorgabewerte als reine Abbildung."""
+    """The bundled defaults as a plain mapping."""
     return _read_yaml(resource_path(DEFAULT_RESOURCE))
 
 
@@ -59,22 +57,21 @@ def user_config_path() -> Path:
 
 
 def default_config_text() -> str:
-    """Der Wortlaut der mitgelieferten Vorgabedatei, inklusive Kommentare."""
+    """The exact text of the bundled defaults file, including comments."""
     return resource_path(DEFAULT_RESOURCE).read_text(encoding="utf-8")
 
 
 def commented_out(text: str) -> str:
-    """Kommentiert jede Wertzeile aus, laesst Kommentare und Leerzeilen stehen.
+    """Comments out every value line, leaving comments and blank lines alone.
 
-    Das ist der Sinn der ganzen Uebung: Eine Datei, in der alles auskommentiert
-    ist, uebernimmt NUR das, was jemand bewusst einkommentiert. Alles uebrige
-    bleibt an den mitgelieferten Vorgaben haengen und wandert mit jeder neuen
-    Version mit.
+    That is the whole point: a file in which everything is commented out takes
+    over ONLY what someone deliberately uncomments. Everything else stays tied
+    to the bundled defaults and moves along with every new version.
 
-    Eine vollstaendige Kopie waere bequemer und schlechter: Sie friert die
-    Vorgaben des Installationstags ein. Wird spaeter ein Vorgabewert korrigiert,
-    ueberschreibt die alte Kopie die Korrektur - und niemand sucht den Fehler in
-    einer Datei, die er vor einem Jahr angelegt hat.
+    A complete copy would be more convenient and worse: it freezes the defaults
+    of the installation day. If a default is corrected later, the old copy
+    overrides the correction - and nobody looks for the bug in a file they
+    created a year ago.
     """
     lines: list[str] = []
     for line in text.splitlines():
@@ -87,50 +84,50 @@ def commented_out(text: str) -> str:
 
 
 HEADER = """\
-# WinEventAI - eigene Konfiguration
+# WinEventAI - own configuration
 #
-# Angelegt mit 'wineventai config init'.
+# Created with 'wineventai config init'.
 #
-# Hier steht ALLES auskommentiert. Wirksam wird nur, was Sie einkommentieren -
-# alles uebrige bleibt an den mitgelieferten Vorgaben und wandert mit kuenftigen
-# Versionen mit. Deshalb bitte nicht alles pauschal einkommentieren: Sie wuerden
-# die Vorgaben des heutigen Tages einfrieren.
+# EVERYTHING here is commented out. Only what you uncomment takes effect -
+# everything else stays tied to the bundled defaults and moves along with
+# future versions. So please do not uncomment everything wholesale: you would
+# freeze today's defaults.
 #
-# YAML-Falle: Beim Einkommentieren muss der ELTERNSCHLUESSEL mit. Wer nur
+# YAML trap: when uncommenting, the PARENT KEY has to come along. Turning
 #   #   days: 30
-# zu
+# into
 #       days: 30
-# macht, setzt "days" auf oberster Ebene - und der Start bricht mit
-# "Extra inputs are not permitted" ab. Richtig ist:
+# sets "days" at the top level - and startup fails with
+# "Extra inputs are not permitted". Correct is:
 #   collect:
 #     days: 30
 #
-# Rangfolge, schwaechste zuerst:
-#   1. mitgelieferte Vorgaben
-#   2. DIESE DATEI
-#   3. --config <datei>
-#   4. Schalter auf der Kommandozeile
+# Precedence, weakest first:
+#   1. bundled defaults
+#   2. THIS FILE
+#   3. --config <file>
+#   4. command-line switches
 #
-# Wirksame Werte pruefen:  wineventai config show
-# Umgebung pruefen:        wineventai doctor
+# Check effective values:  wineventai config show
+# Check the environment:   wineventai doctor
 
 """
 
 
 def write_user_config(*, full: bool = False, force: bool = False) -> Path:
-    """Legt die Benutzerkonfiguration an.
+    """Creates the user configuration.
 
-    Bewusst NICHT automatisch beim ersten Start: Eine Datei, die von selbst
-    entsteht, wird nie gelesen - und friert trotzdem Werte ein.
+    Deliberately NOT automatic on first start: a file that appears by itself is
+    never read - and freezes values anyway.
 
     Raises:
-        FileExistsError: wenn die Datei existiert und ``force`` nicht gesetzt ist.
+        FileExistsError: if the file exists and ``force`` is not set.
     """
     target = user_config_path()
     if target.exists() and not force:
         raise FileExistsError(
-            f"{target} existiert bereits. Mit --force ueberschreiben "
-            "(die bisherige Fassung wird dabei als .bak gesichert)."
+            f"{target} already exists. Overwrite with --force "
+            "(the previous version is kept as .bak)."
         )
 
     body = default_config_text() if full else commented_out(default_config_text())
@@ -145,11 +142,11 @@ def write_user_config(*, full: bool = False, force: bool = False) -> Path:
 
 
 def effective_config_sources() -> list[tuple[str, Path | None, bool]]:
-    """Welche Ebenen es gibt und welche davon tatsaechlich existieren."""
+    """Which layers exist and which of them are actually present."""
     user = user_config_path()
     return [
-        ("mitgeliefert", resource_path(DEFAULT_RESOURCE), True),
-        ("benutzer", user, user.is_file()),
+        ("bundled", resource_path(DEFAULT_RESOURCE), True),
+        ("user", user, user.is_file()),
     ]
 
 
@@ -157,7 +154,7 @@ def load_config(
     explicit: Path | None = None,
     overrides: dict[str, Any] | None = None,
 ) -> Config:
-    """Baut die Konfiguration aus allen Ebenen zusammen und validiert sie."""
+    """Builds the configuration from all layers and validates it."""
     merged = default_config_dict()
 
     user_path = user_config_path()
@@ -166,7 +163,7 @@ def load_config(
 
     if explicit is not None:
         if not explicit.is_file():
-            raise FileNotFoundError(f"Konfigurationsdatei nicht gefunden: {explicit}")
+            raise FileNotFoundError(f"Configuration file not found: {explicit}")
         merged = _deep_merge(merged, _read_yaml(explicit))
 
     if overrides:

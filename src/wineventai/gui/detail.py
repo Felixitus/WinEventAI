@@ -1,14 +1,12 @@
-"""Detaildarstellung eines Befunds als Qt-Rich-Text.
+"""Detail view of a finding as Qt rich text.
 
-Bewusst QTextBrowser statt QtWebEngine: Letzteres bringt rund 150 MB Chromium
-in das PyInstaller-Bundle, fuer ein Werkzeug, das ohnehin nur Text und Tabellen
-zeigt. Der vollstaendige HTML-Bericht wird stattdessen aus der Oberflaeche
-heraus im System-Browser geoeffnet - dort gehoert er hin, denn er wird
-weitergegeben.
+Deliberately QTextBrowser instead of QtWebEngine: the latter brings about
+150 MB of Chromium into the PyInstaller bundle, for a tool that only shows text
+and tables anyway. The full HTML report is instead opened from the interface in
+the system browser - that is where it belongs, because it gets passed on.
 
-Qt-Rich-Text ist eine Untermenge von HTML 4: keine Flexbox, kein Grid, kein
-externes CSS. Deshalb hier Tabellen und Inline-Stile statt der Klassen aus dem
-Bericht.
+Qt rich text is a subset of HTML 4: no flexbox, no grid, no external CSS. Hence
+tables and inline styles here instead of the classes from the report.
 """
 
 from __future__ import annotations
@@ -21,248 +19,247 @@ from ..rules.engine import Finding
 from . import theme
 
 
-def _liste(titel: str, eintraege: list[str]) -> str:
-    if not eintraege:
+def _list(title: str, entries: list[str]) -> str:
+    if not entries:
         return ""
-    zeilen = "".join(f"<li>{escape(item)}</li>" for item in eintraege)
+    rows = "".join(f"<li>{escape(item)}</li>" for item in entries)
     return (
         f'<p style="margin:14px 0 2px;color:{theme.INK_FAINT};font-size:10px;'
-        f'font-weight:600;">{escape(titel.upper())}</p>'
-        f'<ul style="margin:0 0 0 14px;">{zeilen}</ul>'
+        f'font-weight:600;">{escape(title.upper())}</p>'
+        f'<ul style="margin:0 0 0 14px;">{rows}</ul>'
     )
 
 
-def _kennzahl(name: str, wert: str) -> str:
+def _figure(name: str, value: str) -> str:
     return (
         f'<td style="padding:0 22px 6px 0;">'
         f'<div style="color:{theme.INK_FAINT};font-size:10px;font-weight:600;">'
         f"{escape(name.upper())}</div>"
-        f'<div style="font-size:13px;">{wert}</div></td>'
+        f'<div style="font-size:13px;">{value}</div></td>'
     )
 
 
-def _aussage_block(statement: object, *, mit_belegen: bool = True) -> str:
-    """Eine Modellaussage samt Belegen und Pruefvermerk."""
-    aussage = getattr(statement, "aussage", "")
-    confidence = str(getattr(statement, "confidence", "unklar"))
+def _statement_block(statement: object, *, with_evidence: bool = True) -> str:
+    """One model statement including evidence and verification note."""
+    text = getattr(statement, "statement", "")
+    confidence = str(getattr(statement, "confidence", "unclear"))
     verified = bool(getattr(statement, "verified", True))
     note = getattr(statement, "verification_note", None)
 
-    farbe = {
-        "hoch": theme.OK,
-        "mittel": theme.INFO,
-        "niedrig": theme.WARN,
-        "unklar": theme.INK_FAINT,
+    color = {
+        "high": theme.OK,
+        "medium": theme.INFO,
+        "low": theme.WARN,
+        "unclear": theme.INK_FAINT,
     }.get(confidence, theme.INK_FAINT)
 
-    text_farbe = theme.INK if verified else theme.INK_FAINT
-    teile = [
+    text_color = theme.INK if verified else theme.INK_FAINT
+    parts = [
         f'<div style="margin:0 0 10px;">'
-        f'<span style="color:{farbe};font-size:10px;font-weight:700;">'
+        f'<span style="color:{color};font-size:10px;font-weight:700;">'
         f"{escape(confidence.upper())}</span>&nbsp;&nbsp;"
-        f'<span style="color:{text_farbe};">{escape(aussage)}</span>'
+        f'<span style="color:{text_color};">{escape(text)}</span>'
     ]
 
-    if mit_belegen:
-        belege = getattr(statement, "evidence", []) or []
-        if belege:
-            gefasst = " · ".join(
+    if with_evidence:
+        evidence = getattr(statement, "evidence", []) or []
+        if evidence:
+            joined = " · ".join(
                 f"{escape(item.provider)}:{item.event_id} @ "
-                f"{item.timestamp_utc.strftime('%d.%m. %H:%M:%S')}"
-                for item in belege[:4]
+                f"{item.timestamp_utc.strftime('%Y-%m-%d %H:%M:%S')}"
+                for item in evidence[:4]
             )
-            teile.append(
+            parts.append(
                 f'<div style="color:{theme.INK_FAINT};font-size:11px;'
-                f'font-family:Consolas,monospace;">{gefasst}</div>'
+                f'font-family:Consolas,monospace;">{joined}</div>'
             )
 
     if not verified and note:
-        teile.append(
+        parts.append(
             f'<div style="color:{theme.CRIT};font-size:11px;">'
-            f"Verworfen: {escape(str(note))}</div>"
+            f"Rejected: {escape(str(note))}</div>"
         )
 
-    teile.append("</div>")
-    return "".join(teile)
+    parts.append("</div>")
+    return "".join(parts)
 
 
-def _sonde_block(probe: ProbeResult) -> str:
-    """Eine Messung samt Zeitvorbehalt.
+def _probe_block(probe: ProbeResult) -> str:
+    """One measurement including the time caveat.
 
-    Der Vorbehalt steht in JEDER Karte, nicht einmal ueber dem Abschnitt. Wer
-    nur eine Sonde liest - und das ist der Normalfall - soll ihn trotzdem
-    mitlesen.
+    The caveat is in EVERY card, not once above the section. Whoever reads only
+    one probe - and that is the normal case - should read it as well.
     """
-    farbe = {
+    color = {
         ProbeStatus.OK: theme.OK,
         ProbeStatus.WARN: theme.WARN,
     }.get(probe.status, theme.INK_FAINT)
 
-    # Kein farbiger Balken links: Qt-Rich-Text zeichnet ``border-left``
-    # ausserhalb von Tabellen nicht, und ein Blockzeichen als Ersatz haengt an
-    # der installierten Schrift. Traeger der Unterscheidung ist deshalb das
-    # Statuswort - in Grossbuchstaben UND in Farbe, also nicht nur farbig.
-    teile = [
+    # No colored bar on the left: Qt rich text does not draw ``border-left``
+    # outside of tables, and a block character as a substitute depends on the
+    # installed font. The carrier of the distinction is therefore the status
+    # word - in capitals AND in color, so not only colored.
+    parts = [
         f'<div style="margin:0 0 12px;">'
-        f'<div><span style="color:{farbe};font-size:10px;font-weight:700;">'
+        f'<div><span style="color:{color};font-size:10px;font-weight:700;">'
         f"{escape(str(probe.status).upper())}</span>&nbsp;&nbsp;"
         f'<span style="font-weight:600;">{escape(probe.title)}</span>'
     ]
     if probe.target:
-        teile.append(
+        parts.append(
             f'&nbsp;<span style="color:{theme.INK_FAINT};font-family:Consolas,monospace;'
             f'font-size:11px;">{escape(probe.target)}</span>'
         )
-    teile.append(
+    parts.append(
         f'&nbsp;&nbsp;<span style="color:{theme.INK_FAINT};font-size:11px;">'
         f"{escape(str(probe.bearing))}</span></div>"
     )
 
     if probe.summary:
-        teile.append(f'<div style="margin:2px 0;">{escape(probe.summary)}</div>')
+        parts.append(f'<div style="margin:2px 0;">{escape(probe.summary)}</div>')
     if probe.details:
-        zeilen = "".join(f"<li>{escape(item)}</li>" for item in probe.details)
-        teile.append(
+        rows = "".join(f"<li>{escape(item)}</li>" for item in probe.details)
+        parts.append(
             f'<ul style="margin:2px 0 2px 14px;color:{theme.INK_SOFT};font-size:12px;">'
-            f"{zeilen}</ul>"
+            f"{rows}</ul>"
         )
     if probe.detail_error:
-        teile.append(
+        parts.append(
             f'<div style="color:{theme.CRIT};font-size:11px;">'
             f"{escape(probe.detail_error)}</div>"
         )
-    teile.append(
+    parts.append(
         f'<div style="color:{theme.INK_FAINT};font-size:11px;font-style:italic;">'
         f"{escape(probe.age_note())}</div></div>"
     )
-    return "".join(teile)
+    return "".join(parts)
 
 
 def finding_detail_html(finding: Finding, ai: AiRunResult | None = None) -> str:
-    """Baut die Detailansicht eines Befunds."""
-    farbe = theme.SEVERITY_COLOR.get(finding.severity, theme.NOISE)
-    eskaliert = " (eskaliert)" if finding.escalated else ""
+    """Builds the detail view of a finding."""
+    color = theme.SEVERITY_COLOR.get(finding.severity, theme.NOISE)
+    escalated = " (escalated)" if finding.escalated else ""
 
-    kopf = (
-        f'<div style="border-left:3px solid {farbe};padding-left:12px;margin-bottom:4px;">'
-        f'<div style="color:{farbe};font-size:10px;font-weight:700;">'
-        f"{escape(str(finding.severity).upper())}{escape(eskaliert)}</div>"
+    head = (
+        f'<div style="border-left:3px solid {color};padding-left:12px;margin-bottom:4px;">'
+        f'<div style="color:{color};font-size:10px;font-weight:700;">'
+        f"{escape(str(finding.severity).upper())}{escape(escalated)}</div>"
         f'<div style="font-size:17px;font-weight:600;">{escape(finding.rule_name)}</div>'
         f"</div>"
     )
 
-    zeitraum = (
-        f"{finding.group.first_seen_utc.strftime('%d.%m.%Y %H:%M')} – "
-        f"{finding.group.last_seen_utc.strftime('%d.%m.%Y %H:%M')}"
+    period = (
+        f"{finding.group.first_seen_utc.strftime('%Y-%m-%d %H:%M')} – "
+        f"{finding.group.last_seen_utc.strftime('%Y-%m-%d %H:%M')}"
     )
-    kennzahlen = (
+    figures = (
         '<table cellspacing="0" cellpadding="0" style="margin:10px 0 4px;"><tr>'
-        + _kennzahl("Haeufigkeit", f"{finding.group.count} ×")
-        + _kennzahl("Zeitraum (UTC)", escape(zeitraum))
-        + _kennzahl("Kanal", f"<code>{escape(finding.group.channel)}</code>")
-        + _kennzahl(
-            "Regel",
+        + _figure("Count", f"{finding.group.count} ×")
+        + _figure("Period (UTC)", escape(period))
+        + _figure("Channel", f"<code>{escape(finding.group.channel)}</code>")
+        + _figure(
+            "Rule",
             f"<code>{escape(finding.rule_id)}</code> "
             f'<span style="color:{theme.INK_FAINT};">({escape(finding.rule_source)})</span>',
         )
         + "</tr></table>"
     )
 
-    teile = [kopf, kennzahlen]
+    parts = [head, figures]
 
     if finding.group.bursts:
         spans = ", ".join(
             f"{b.hour_utc.replace('T', ' ')}:00 ({b.count}×)" for b in finding.group.bursts[:3]
         )
-        teile.append(
+        parts.append(
             f'<p style="color:{theme.ERR};margin:6px 0;">'
-            f"Auffaellige Haeufung: {escape(spans)}</p>"
+            f"Conspicuous clustering: {escape(spans)}</p>"
         )
 
-    if finding.bedeutung:
-        teile.append(f'<p style="margin:10px 0;">{escape(finding.bedeutung.strip())}</p>')
+    if finding.meaning:
+        parts.append(f'<p style="margin:10px 0;">{escape(finding.meaning.strip())}</p>')
 
     if not finding.has_verified_meaning:
-        teile.append(
+        parts.append(
             f'<p style="background:{theme.WARN_BG};padding:8px 10px;margin:8px 0;">'
-            f"Keine gesicherte Bedeutung in der Wissensbasis hinterlegt "
-            f"(Status: {escape(finding.kb_confidence)}). Aussagen zu diesem Befund "
-            f"sind ungeprueft.</p>"
+            f"No verified meaning on record in the knowledge base "
+            f"(state: {escape(finding.kb_confidence)}). Statements about this finding "
+            f"are unverified.</p>"
         )
 
-    teile.append(_liste("Typische Ursachen", finding.typische_ursachen))
-    teile.append(_liste("Empfohlene Pruefschritte", finding.empfohlene_checks))
+    parts.append(_list("Typical causes", finding.typical_causes))
+    parts.append(_list("Recommended checks", finding.recommended_checks))
 
     if finding.probes:
-        teile.append(
+        parts.append(
             f'<hr style="border:none;border-top:1px solid {theme.RULE};margin:16px 0 10px;">'
             f'<p style="color:{theme.INK_FAINT};font-size:10px;font-weight:600;margin:0 0 6px;">'
-            f"MESSUNGEN ZUM AKTUELLEN ZUSTAND</p>"
+            f"MEASUREMENTS OF THE CURRENT STATE</p>"
         )
-        teile.extend(_sonde_block(probe) for probe in finding.probes)
+        parts.extend(_probe_block(probe) for probe in finding.probes)
 
-    eintrag = ai.for_finding(finding.finding_id) if ai else None
-    if eintrag and eintrag.explanation:
-        teile.append(
+    entry = ai.for_finding(finding.finding_id) if ai else None
+    if entry and entry.explanation:
+        parts.append(
             f'<hr style="border:none;border-top:1px solid {theme.RULE};margin:16px 0;">'
             f'<p style="color:{theme.INK_FAINT};font-size:10px;font-weight:600;">'
-            f"EINSCHAETZUNG DES SPRACHMODELLS</p>"
+            f"ASSESSMENT BY THE LANGUAGE MODEL</p>"
             f'<p style="margin:4px 0 12px;">'
-            f"{escape(eintrag.explanation.zusammenfassung)}</p>"
+            f"{escape(entry.explanation.summary)}</p>"
         )
-        for statement in eintrag.explanation.hypothesen:
-            teile.append(_aussage_block(statement))
-        if eintrag.explanation.empfohlene_schritte:
-            teile.append(
+        for statement in entry.explanation.hypotheses:
+            parts.append(_statement_block(statement))
+        if entry.explanation.recommended_steps:
+            parts.append(
                 f'<p style="color:{theme.INK_FAINT};font-size:10px;font-weight:600;'
-                f'margin-top:10px;">VORGESCHLAGENE NAECHSTE SCHRITTE</p>'
+                f'margin-top:10px;">SUGGESTED NEXT STEPS</p>'
             )
-            for statement in eintrag.explanation.empfohlene_schritte:
-                teile.append(_aussage_block(statement, mit_belegen=False))
-        if eintrag.verification.statements_rejected:
-            teile.append(
+            for statement in entry.explanation.recommended_steps:
+                parts.append(_statement_block(statement, with_evidence=False))
+        if entry.verification.statements_rejected:
+            parts.append(
                 f'<p style="color:{theme.CRIT};font-size:11px;">'
-                f"{eintrag.verification.statements_rejected} Aussage(n) verworfen, "
-                f"weil sie nicht durch Ereignisse aus der Eingabe gedeckt waren.</p>"
+                f"{entry.verification.statements_rejected} statement(s) rejected "
+                f"because they were not covered by events from the input.</p>"
             )
-    elif eintrag and eintrag.note:
-        teile.append(
+    elif entry and entry.note:
+        parts.append(
             f'<p style="color:{theme.INK_FAINT};margin-top:12px;">'
-            f"Sprachmodell: {escape(eintrag.note)}</p>"
+            f"Language model: {escape(entry.note)}</p>"
         )
 
     if finding.context_events:
-        zeilen = "".join(
+        rows = "".join(
             f"<tr>"
             f'<td style="padding:2px 10px 2px 0;font-family:Consolas,monospace;'
             f'font-size:11px;white-space:nowrap;">'
-            f"{event.timestamp_utc.strftime('%d.%m. %H:%M:%S')}</td>"
+            f"{event.timestamp_utc.strftime('%Y-%m-%d %H:%M:%S')}</td>"
             f'<td style="padding:2px 10px 2px 0;font-family:Consolas,monospace;'
             f'font-size:11px;">{escape(event.provider)}:{event.event_id}</td>'
             f'<td style="padding:2px 0;font-size:11px;color:{theme.INK_SOFT};">'
             f"{escape(event.excerpt(140))}</td></tr>"
             for event in finding.context_events[:25]
         )
-        teile.append(
+        parts.append(
             f'<p style="color:{theme.INK_FAINT};font-size:10px;font-weight:600;'
-            f'margin-top:16px;">{len(finding.context_events)} EREIGNISSE IM UMFELD '
-            f"(die ersten 25)</p>"
-            f'<table cellspacing="0" cellpadding="0">{zeilen}</table>'
+            f'margin-top:16px;">{len(finding.context_events)} EVENTS IN THE SURROUNDINGS '
+            f"(the first 25)</p>"
+            f'<table cellspacing="0" cellpadding="0">{rows}</table>'
         )
 
-    if finding.referenz:
-        teile.append(
-            f'<p style="margin-top:14px;"><a href="{escape(finding.referenz)}" '
-            f'style="color:{theme.ACCENT};">Referenz oeffnen</a></p>'
+    if finding.reference:
+        parts.append(
+            f'<p style="margin-top:14px;"><a href="{escape(finding.reference)}" '
+            f'style="color:{theme.ACCENT};">Open reference</a></p>'
         )
 
     return (
         f'<div style="font-family:Segoe UI,sans-serif;font-size:13px;'
-        f'color:{theme.INK};">' + "".join(teile) + "</div>"
+        f'color:{theme.INK};">' + "".join(parts) + "</div>"
     )
 
 
 PLACEHOLDER = (
     f'<div style="color:{theme.INK_FAINT};padding:24px;font-family:Segoe UI,sans-serif;">'
-    "Links einen Befund auswaehlen.</div>"
+    "Select a finding on the left.</div>"
 )

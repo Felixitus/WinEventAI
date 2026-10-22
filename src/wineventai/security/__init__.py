@@ -1,4 +1,4 @@
-"""Sicherheitsmodus: zusaetzliche Indikatoren, Richtlinienpruefung, Zeitluecken."""
+"""Security mode: additional indicators, policy check, timeline gaps."""
 
 from .audit_policy import (
     SUBCATEGORY_EVENTS,
@@ -11,10 +11,10 @@ from .audit_policy import (
     query_audit_policy,
 )
 from .gaps import TimelineGap, find_gaps
-from .indicators import HINWEIS, NotLoggedIndicator, SecurityReport, build_security_report
+from .indicators import DISCLAIMER, NotLoggedIndicator, SecurityReport, build_security_report
 
 __all__ = [
-    "HINWEIS",
+    "DISCLAIMER",
     "SUBCATEGORY_EVENTS",
     "NotLoggedIndicator",
     "PolicyCheck",

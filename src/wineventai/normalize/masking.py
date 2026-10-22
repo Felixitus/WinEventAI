@@ -1,12 +1,12 @@
-"""Maskierung variabler Bestandteile fuer den Fingerprint.
+"""Masking of variable parts for the fingerprint.
 
-Zwei Ereignisse desselben Typs unterscheiden sich in Zahlen, GUIDs, Handles und
-Pfaden. Fuer die Deduplizierung muss das weg, sonst hat jeder Vorfall seinen
-eigenen Fingerprint.
+Two events of the same type differ in numbers, GUIDs, handles and paths. For
+deduplication that has to go, otherwise every incident gets its own
+fingerprint.
 
-Wichtig: Diese Maskierung ist *nicht* die Redaction fuer das Sprachmodell. Sie
-dient nur dem Vergleich und wird nie ausgegeben. Die Redaction steht in
-``ai.redaction`` und arbeitet mit stabilen Pseudonymen.
+Important: this masking is *not* the redaction for the language model. It is
+only used for comparison and never output. Redaction lives in ``ai.redaction``
+and works with stable pseudonyms.
 """
 
 from __future__ import annotations
@@ -25,8 +25,8 @@ _MAC = re.compile(r"\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b")
 _NUMBER = re.compile(r"\b\d+\b")
 _WS = re.compile(r"\s+")
 
-# Reihenfolge ist relevant: Spezifisches vor Allgemeinem. Zahlen zuletzt,
-# sonst zerlegt der Zahlen-Ersatz vorher GUIDs und IP-Adressen.
+# Order matters: specific before general. Numbers last, otherwise the number
+# replacement would tear apart GUIDs and IP addresses first.
 _STEPS: tuple[tuple[re.Pattern[str], str], ...] = (
     (_GUID, "<guid>"),
     (_SID, "<sid>"),
@@ -40,7 +40,7 @@ _STEPS: tuple[tuple[re.Pattern[str], str], ...] = (
 
 
 def mask_text(text: str) -> str:
-    """Ersetzt variable Bestandteile durch Platzhalter und normalisiert Leerraum."""
+    """Replaces variable parts with placeholders and normalizes whitespace."""
     if not text:
         return ""
     masked = text
@@ -50,11 +50,11 @@ def mask_text(text: str) -> str:
 
 
 def mask_properties(properties: list[str | None]) -> str:
-    """Maskiert den positionalen Property-Vektor eines Events.
+    """Masks the positional property vector of an event.
 
-    Der Property-Vektor ist die sprachneutrale Substanz eines Ereignisses; der
-    Meldungstext ist nur seine Uebersetzung. Deshalb ist er die bessere
-    Grundlage fuer den Fingerprint auf gemischten Systemen.
+    The property vector is the language-neutral substance of an event; the
+    message text is only its translation. That makes it the better basis for
+    the fingerprint on mixed-language systems.
     """
     parts = []
     for value in properties:

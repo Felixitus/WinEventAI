@@ -1,84 +1,83 @@
-# Weiterarbeit mit OpenCode und einem Qwen-Modell
+# Continuing with OpenCode and a local model
 
-## Einrichtung
+## Setup
 
 ```bash
-unzip wineventai-1.2.0-handover.zip
-cd winevent-ai
+git clone https://github.com/Felixitus/WinEventAI.git
+cd WinEventAI
 python -m venv .venv && . .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-python -m pytest -q        # muss 243 passed melden
-ruff check src/ tests/     # muss sauber sein
+python -m pytest -q        # must report 257 passed
+ruff check src/ tests/     # must be clean
 opencode
 ```
 
-OpenCode liest `AGENTS.md` im Projektwurzelverzeichnis von selbst ein. Das ist
-der Arbeitsvertrag; mehr musst du nicht vorgeben.
+OpenCode reads `AGENTS.md` in the project root by itself. That is the working
+contract; you do not need to specify more.
 
-`opencode.json` im Projektordner, falls du das Modell festnageln willst:
+`opencode.json` in the project folder (ignored by git) if you want to pin the
+model:
 
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "ollama/qwen2.5-coder:32b",
+  "model": "ollama/qwen3-coder:30b",
   "provider": {
     "ollama": {
       "npm": "@ai-sdk/openai-compatible",
       "options": { "baseURL": "http://localhost:11434/v1" },
-      "models": { "qwen2.5-coder:32b": {} }
+      "models": { "qwen3-coder:30b": {} }
     }
   }
 }
 ```
 
-## Modellwahl
+## Model choice
 
-Zwei verschiedene Modelle, nicht verwechseln:
+Two different models, do not mix them up:
 
-- **Das Modell, das am Code arbeitet** (OpenCode): nimm die groesste
-  Coder-Variante, die auf deine Hardware passt. `qwen2.5-coder:32b` ab 24 GB
-  VRAM, `qwen2.5-coder:14b` ab 12 GB, `:7b` nur fuer kleine Aenderungen.
-- **Das Modell, das WinEventAI zur Laufzeit benutzt** (`ai.model` in der
-  Konfiguration, Default `qwen2.5:14b-instruct`): das ist eine offene Frage,
-  siehe `HANDOVER.md` Punkt 9.5. Der Abnahmetest `kb bench` ist spezifiziert,
-  aber nicht gebaut.
+- **The model that works on the code** (OpenCode): take the largest coder
+  variant that fits your hardware. A 30B coder from 24 GB VRAM, a 14B coder
+  from 12 GB, 7B only for small changes.
+- **The model WinEventAI uses at run time** (`ai.model` in the configuration,
+  default `qwen2.5:14b-instruct`): optional - without it the report comes from
+  the rule engine. Which model is best is an open question, see `HANDOVER.md`
+  item 6. The acceptance test `ai bench` is specified but not built.
 
-## Erste Aufgabe fuer das Modell
+## First task for the model
 
-Nimm einen Punkt aus `HANDOVER.md` Abschnitt 9 und nur einen. Vorschlag nach
-Nutzen pro Aufwand:
+Take one item from `HANDOVER.md` section 10 and only one. Suggestion by benefit
+per effort:
 
-1. **`kb bench` bauen** (Punkt 5). Reiner Python-Code, kein Windows noetig,
-   gut testbar, und erst danach laesst sich die Modellwahl begruenden statt
-   raten.
-2. **Zeitsynchronisierungs-Sonde** (Punkt 6) als vierte Sonde. `probes/time.py`
-   plus `probe_time.ps1`, Muster eins zu eins von `probes/services.py`
-   abschauen. Haengt an W32Time 36/47.
-3. Alles andere braucht eine echte Windows-Maschine und laesst sich nicht
-   vorab erledigen.
+1. **Build `ai bench`** (item 6). Pure Python, no Windows needed, easy to
+   test, and only then can the model choice be justified instead of guessed.
+2. **Time synchronization probe** (item 7) as a fourth probe. `probes/time.py`
+   plus `probe_time.ps1`, copy the pattern one to one from
+   `probes/services.py`. Hangs on W32Time 36/47.
+3. Everything else needs a real Windows machine.
 
-## Prompt zum Einstieg
+## Prompt to start
 
-> Lies AGENTS.md und HANDOVER.md vollstaendig. Baue danach <Aufgabe>.
-> Halte dich an die zehn Regeln in AGENTS.md Abschnitt 7 und an die
-> Sprachkonvention in Abschnitt 4: Bezeichner englisch, Kommentare deutsch,
-> keine Umlaute im Quelltext. Lege zuerst die Datei an, dann die Tests, dann
-> halte an und zeig mir beides. Wenn dir etwas an der Aufgabe technisch
-> fragwuerdig vorkommt, sag es, statt es umzusetzen.
+> Read AGENTS.md and HANDOVER.md completely. Then build <task>.
+> Follow the ten rules in AGENTS.md section 7 and the language convention in
+> section 4: everything in English, no non-ASCII characters in source code.
+> Create the file first, then the tests, then stop and show me both. If
+> something about the task seems technically questionable to you, say so
+> instead of implementing it.
 
-## Was ein kleineres Modell erfahrungsgemaess falsch macht
+## What a smaller model tends to get wrong
 
-Pruefe diese Punkte bei jedem Vorschlag nach — sie fallen einem schwaecheren
-Modell regelmaessig herunter:
+Check these points with every proposal - a weaker model drops them
+regularly:
 
-- **Umlaute im Quelltext.** Kommt fast immer zurueck. `ae oe ue ss`.
-- **`ConvertTo-Json` auf die ganze Pipeline** statt je Zeile.
-- **Lookup ueber die Event-ID allein** statt `(provider, event_id)`.
-- **Englische Kommentare** oder englische Berichtstexte.
-- **`# TODO: implementieren`** statt fertigem Code.
-- **Lokalisierte Texte als Matching-Grundlage** (`"Der Dienst wurde..."`).
-- **Entlastende Formulierungen bei nicht erfolgter Messung** — "alles in
-  Ordnung" statt "nicht messbar".
-- **Netzzugriff in Tests.** `tests/conftest.py` blockiert Sockets; wenn ein
-  neuer Test `NetworkAccessInTest` wirft, ist der Test falsch, nicht die
-  Fixture.
+- **`ConvertTo-Json` on the whole pipeline** instead of per line.
+- **Comma lists into `[int[]]` script parameters** instead of one
+  `|`-separated string.
+- **Lookup by the event id alone** instead of `(provider, event_id)`.
+- **`# TODO: implement`** instead of finished code.
+- **Localized texts as matching basis** (`"The service terminated..."`).
+- **Reassuring wording when nothing was measured** - "all fine" instead of
+  "not measurable".
+- **A code path that requires Ollama.** Every feature must work without it.
+- **Network access in tests.** `tests/conftest.py` blocks sockets; if a new
+  test raises `NetworkAccessInTest`, the test is wrong, not the fixture.

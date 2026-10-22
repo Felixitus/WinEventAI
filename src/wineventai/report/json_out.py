@@ -1,7 +1,7 @@
-"""JSON-Bericht.
+"""JSON report.
 
-Maschinenlesbare Fassung fuer Weiterverarbeitung und Ticketsysteme. Erzeugt aus
-demselben ``ReportModel`` wie HTML und Markdown - nicht aus einem der beiden.
+Machine-readable version for further processing and ticket systems. Produced
+from the same ``ReportModel`` as HTML and Markdown - not from either of them.
 """
 
 from __future__ import annotations
@@ -14,38 +14,38 @@ from .model import ReportModel
 
 
 def render_json(report: ReportModel) -> dict[str, Any]:
-    """Baut die JSON-Struktur des Berichts."""
+    """Builds the JSON structure of the report."""
     return {
-        "titel": report.title,
-        "kopfzeile": report.headline,
-        "erzeugt_utc": report.generated_utc.isoformat(),
-        "pseudonymisiert": report.redacted,
-        "lauf": report.meta.model_dump(mode="json"),
-        "abdeckung": [row.model_dump(mode="json") for row in report.coverage],
-        "abdeckung_unvollstaendig": report.has_coverage_problem,
-        "kennzahlen": {
-            "ereignisse_gelesen": report.total_events,
+        "title": report.title,
+        "headline": report.headline,
+        "generated_utc": report.generated_utc.isoformat(),
+        "pseudonymized": report.redacted,
+        "run": report.meta.model_dump(mode="json"),
+        "coverage": [row.model_dump(mode="json") for row in report.coverage],
+        "coverage_incomplete": report.has_coverage_problem,
+        "figures": {
+            "events_read": report.total_events,
             "fingerprints": report.distinct_groups,
-            "reduktionsrate": round(report.reduction_rate, 4),
+            "reduction_rate": round(report.reduction_rate, 4),
             "retention": report.retention_stats,
         },
-        "befunde": [finding.to_public_dict() for finding in report.findings],
-        "rauschen": [finding.to_public_dict() for finding in report.noise],
-        "boot_sitzungen": [session.model_dump(mode="json") for session in report.boot_sessions],
-        "ki": {
-            "verwendet": report.ai.used,
-            "modell": report.ai.model,
+        "findings": [finding.to_public_dict() for finding in report.findings],
+        "noise": [finding.to_public_dict() for finding in report.noise],
+        "boot_sessions": [session.model_dump(mode="json") for session in report.boot_sessions],
+        "ai": {
+            "used": report.ai.used,
+            "model": report.ai.model,
             "num_ctx": report.ai.num_ctx,
-            "grund_falls_nicht": report.ai.unavailable_reason,
-            "verworfene_aussagen": report.ai.rejected_statements,
-            "je_befund": [entry.model_dump(mode="json") for entry in report.ai.findings],
-            "zusammenhaenge": (
+            "reason_if_not": report.ai.unavailable_reason,
+            "rejected_statements": report.ai.rejected_statements,
+            "per_finding": [entry.model_dump(mode="json") for entry in report.ai.findings],
+            "correlations": (
                 report.ai.correlation.model_dump(mode="json") if report.ai.correlation else None
             ),
         },
-        "sicherheit": report.security.model_dump(mode="json"),
-        "unbekannte_ids": report.unknown_ids,
-        "rohdaten_anhang": [record.to_public_dict() for record in report.raw_appendix],
+        "security": report.security.model_dump(mode="json"),
+        "unknown_ids": report.unknown_ids,
+        "raw_appendix": [record.to_public_dict() for record in report.raw_appendix],
     }
 
 

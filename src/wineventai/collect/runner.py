@@ -1,10 +1,9 @@
-"""Orchestrierung der Erhebung: alle Quellen in ein Laufverzeichnis.
+"""Orchestrating the collection: all sources into one run directory.
 
-Quellen werden nacheinander erhoben und sofort als NDJSON weggeschrieben. Das
-ist bewusst nicht parallel: Ein Werkzeug, das auf einem gestoerten Rechner
-laeuft, soll ihn nicht zusaetzlich belasten, und die Wall-Clock-Grenze je Quelle
-ist nur dann eine ehrliche Zusage, wenn nicht mehrere Kanaele gleichzeitig um
-denselben Dienst konkurrieren.
+Sources are collected one after another and written out as NDJSON at once.
+That is deliberately not parallel: a tool running on a troubled machine should
+not add load to it, and the wall-clock limit per source is only an honest
+promise if several channels do not compete for the same service at once.
 """
 
 from __future__ import annotations
@@ -29,7 +28,7 @@ from .wer import WerCollector
 
 
 class CollectionAborted(RuntimeError):
-    """Der Lauf wurde abgebrochen, weil die Datenmenge absurd ist."""
+    """The run was aborted because the data volume is absurd."""
 
 
 def window_for(days: int, now: datetime | None = None) -> tuple[datetime, datetime]:
@@ -38,7 +37,7 @@ def window_for(days: int, now: datetime | None = None) -> tuple[datetime, dateti
 
 
 def write_records(path: Path, records: list[EventRecord]) -> None:
-    """Schreibt die behaltenen Records als NDJSON in das Laufverzeichnis."""
+    """Writes the retained records as NDJSON into the run directory."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         for record in records:
@@ -77,7 +76,7 @@ def collect_all(
     days: int | None = None,
     evtx_dir: Path | None = None,
 ) -> list[SourceResult]:
-    """Erhebt alle konfigurierten Quellen und fuellt das Laufverzeichnis."""
+    """Collects all configured sources and fills the run directory."""
     log = get_log()
     meta = run.read_meta()
     window_from = meta.requested_from_utc
@@ -91,9 +90,9 @@ def collect_all(
 
     try:
         shell = find_powershell(config.collect.powershell_preference)
-        log.info("PowerShell gefunden", pfad=shell.path)
+        log.info("PowerShell found", path=shell.path)
     except PowerShellNotFoundError as exc:
-        log.error("Keine PowerShell", grund=str(exc))
+        log.error("No PowerShell", reason=str(exc))
         shell = None
 
     for entry in config.collect.channels:
@@ -105,7 +104,7 @@ def collect_all(
                     requested_from_utc=window_from,
                     requested_to_utc=window_to,
                     detail="PowerShellNotFound",
-                    note="Ohne PowerShell koennen Ereigniskanaele nicht gelesen werden.",
+                    note="Event channels cannot be read without PowerShell.",
                 )
             )
             continue
@@ -135,8 +134,8 @@ def collect_all(
     )
     for collected in sweep.collect_many():
         _store(collected, run)
-        # Die Uebersichtszeile traegt die Summe aller Sweep-Kanaele; die
-        # Einzelzeilen noch einmal zu addieren, zaehlte doppelt.
+        # The summary row carries the sum of all sweep channels; adding the
+        # individual rows again would count twice.
         if collected.result.source_id == SWEEP_SUMMARY_ID:
             total_read += collected.result.records_read
         results.append(collected.result)
@@ -190,7 +189,7 @@ def collect_all(
 
 
 def _evtx_for(channel: str, evtx_dir: Path | None) -> Path | None:
-    """Sucht eine passende .evtx-Datei fuer einen Kanal im Offline-Betrieb."""
+    """Finds a matching .evtx file for a channel in offline mode."""
     if evtx_dir is None:
         return None
     stem = channel.replace("/", "%4").replace("\\", "%4")
@@ -201,7 +200,7 @@ def _evtx_for(channel: str, evtx_dir: Path | None) -> Path | None:
 
 
 def _run_source(collector: object, run: RunDirectory, log: object) -> CollectedSource:
-    """Erhebt eine Quelle, schreibt ihre Records und protokolliert das Ergebnis."""
+    """Collects a source, writes its records and logs the result."""
     assert hasattr(collector, "collect")
     collected: CollectedSource = collector.collect()  # type: ignore[attr-defined]
     _store(collected, run)
@@ -209,17 +208,17 @@ def _run_source(collector: object, run: RunDirectory, log: object) -> CollectedS
 
 
 def _store(collected: CollectedSource, run: RunDirectory) -> None:
-    """Schreibt die Records einer Quelle und protokolliert das Ergebnis."""
+    """Writes the records of a source and logs the result."""
     result = collected.result
     if collected.records:
         write_records(run.raw_path(result.source_id), collected.records)
 
     get_log().info(
-        "Quelle erhoben",
-        quelle=result.source_id,
+        "Source collected",
+        source=result.source_id,
         status=str(result.status),
-        gelesen=result.records_read,
-        behalten=result.records_retained,
+        read=result.records_read,
+        retained=result.records_retained,
     )
 
 
@@ -227,16 +226,16 @@ def _abort_if_absurd(total_read: int, config: Config) -> None:
     if total_read <= config.collect.abort_above_records:
         return
     raise CollectionAborted(
-        f"Es wurden bereits {total_read:,} Records gelesen "
-        f"(Grenze: {config.collect.abort_above_records:,}). "
-        "Das Zeitfenster wird NICHT automatisch verkleinert, weil der Bericht dann "
-        "still unvollstaendig waere. Vorschlag: '--days 1' setzen oder in der "
-        "Konfiguration fuer den groessten Kanal 'event_ids' einschraenken."
+        f"{total_read:,} records have already been read "
+        f"(limit: {config.collect.abort_above_records:,}). "
+        "The time window is NOT shrunk automatically, because the report would "
+        "then be silently incomplete. Suggestion: set '--days 1' or restrict "
+        "'event_ids' for the largest channel in the configuration."
     )
 
 
 def load_records(run: RunDirectory) -> dict[str, list[EventRecord]]:
-    """Liest alle Rohdaten eines Laufverzeichnisses zurueck."""
+    """Reads all raw data of a run directory back."""
     from .eventlog import CachedChannelCollector
 
     out: dict[str, list[EventRecord]] = {}
@@ -261,6 +260,6 @@ __all__ = [
 ]
 
 
-# Nachtrag: ShellInfo wird re-exportiert, damit Tests den Collector ohne
-# PowerShell-Suche konstruieren koennen.
+# Addendum: ShellInfo is re-exported so tests can build the collector without
+# searching for PowerShell.
 __all__.append("ShellInfo")

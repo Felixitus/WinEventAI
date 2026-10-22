@@ -1,8 +1,8 @@
-"""Abbildung einer NDJSON-Zeile des Collectors auf ``EventRecord``.
+"""Mapping a collector NDJSON line onto ``EventRecord``.
 
-Die kurzen Schluessel (``t``, ``ch``, ``pr`` ...) sind Absicht: Bei einigen
-hunderttausend Zeilen je Lauf spart das spuerbar Platte und Parse-Zeit, und die
-Zuordnung steht an genau einer Stelle - hier.
+The short keys (``t``, ``ch``, ``pr`` ...) are intentional: with a few hundred
+thousand lines per run they noticeably save disk and parse time, and the
+mapping lives in exactly one place - here.
 """
 
 from __future__ import annotations
@@ -14,28 +14,27 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from xml.etree import ElementTree
 
-if TYPE_CHECKING:  # pragma: no cover - nur fuer Typannotationen
+if TYPE_CHECKING:  # pragma: no cover - only for type annotations
     from .schema import EventRecord
 
 _EVENTDATA_TAG = re.compile(r"\{.*\}")
 
 
 class NormalizationError(ValueError):
-    """Eine Zeile liess sich nicht in das Event-Schema ueberfuehren."""
+    """A line could not be converted into the event schema."""
 
 
 def _parse_timestamp(value: Any) -> datetime:
-    """Liest den Zeitstempel als UTC.
+    """Reads the timestamp as UTC.
 
-    Das PowerShell-Skript formatiert bereits ISO-8601 mit ``Z``. Der Zweig fuer
-    ``/Date(...)/`` faengt Exporte ab, die anderswo mit ``ConvertTo-Json`` auf
-    Windows PowerShell 5.1 erzeugt wurden - dort serialisiert ``DateTime`` in
-    genau dieser Form.
+    The PowerShell script already formats ISO-8601 with ``Z``. The branch for
+    ``/Date(...)/`` catches exports produced elsewhere with ``ConvertTo-Json`` on
+    Windows PowerShell 5.1 - that is exactly how ``DateTime`` serializes there.
     """
     if isinstance(value, datetime):
         return value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
     if not isinstance(value, str) or not value:
-        raise NormalizationError("Zeitstempel fehlt")
+        raise NormalizationError("Timestamp missing")
 
     legacy = re.fullmatch(r"/Date\((-?\d+)(?:[+-]\d{4})?\)/", value)
     if legacy:
@@ -45,7 +44,7 @@ def _parse_timestamp(value: Any) -> datetime:
     try:
         parsed = datetime.fromisoformat(text)
     except ValueError as exc:
-        raise NormalizationError(f"Zeitstempel nicht lesbar: {value!r}") from exc
+        raise NormalizationError(f"Timestamp not readable: {value!r}") from exc
     return parsed.astimezone(UTC) if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
@@ -71,11 +70,11 @@ def _as_str(value: Any) -> str | None:
 
 
 def parse_event_data_xml(xml_text: str | None) -> dict[str, str] | None:
-    """Zieht die benannten ``<Data Name="...">``-Felder aus dem Event-XML.
+    """Extracts the named ``<Data Name="...">`` fields from the event XML.
 
-    Diese Namen kommen aus dem Provider-Manifest und sind sprachneutral - anders
-    als der gerenderte Meldungstext. Sie sind der richtige Weg an den Stopcode
-    einer 1001 oder den Logon-Type einer 4624.
+    These names come from the provider manifest and are language-neutral -
+    unlike the rendered message text. They are the right way to get at the stop
+    code of a 1001 or the logon type of a 4624.
     """
     if not xml_text:
         return None
@@ -103,13 +102,13 @@ def record_from_mapping(
     source_ref: str,
     raw_line: str | None = None,
 ) -> EventRecord:
-    """Baut einen ``EventRecord`` aus der geparsten NDJSON-Zeile."""
+    """Builds an ``EventRecord`` from the parsed NDJSON line."""
     from .schema import EventRecord
 
-    provider = _as_str(data.get("pr")) or "unbekannt"
+    provider = _as_str(data.get("pr")) or "unknown"
     event_id = _as_int(data.get("id"))
     if event_id is None:
-        raise NormalizationError("Event-ID fehlt oder ist nicht numerisch")
+        raise NormalizationError("Event id missing or not numeric")
 
     properties_raw = data.get("pv") or []
     if not isinstance(properties_raw, list):
@@ -150,13 +149,13 @@ def record_from_line(
     source_tool: str,
     source_ref: str,
 ) -> EventRecord:
-    """Parst eine NDJSON-Zeile und normalisiert sie."""
+    """Parses an NDJSON line and normalizes it."""
     try:
         data = json.loads(line)
     except json.JSONDecodeError as exc:
-        raise NormalizationError(f"Zeile ist kein gueltiges JSON: {exc}") from exc
+        raise NormalizationError(f"Line is not valid JSON: {exc}") from exc
     if not isinstance(data, dict):
-        raise NormalizationError("Zeile ist kein JSON-Objekt")
+        raise NormalizationError("Line is not a JSON object")
     return record_from_mapping(
         data, source_tool=source_tool, source_ref=source_ref, raw_line=line
     )

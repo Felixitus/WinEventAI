@@ -1,4 +1,4 @@
-"""Konfigurationsmodell. Alle Stellschrauben liegen in YAML, keine im Code."""
+"""Configuration model. Every tuning knob lives in YAML, none in the code."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ChannelConfig(BaseModel):
-    """Ein zu erhebender Ereigniskanal."""
+    """An event channel to collect."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -14,37 +14,37 @@ class ChannelConfig(BaseModel):
     enabled: bool = True
     days: int | None = Field(
         default=None,
-        description="Eigenes Zeitfenster in Tagen; None erbt das globale Fenster.",
+        description="Own time window in days; None inherits the global window.",
     )
     event_ids: list[int] = Field(
         default_factory=list,
-        description="Serverseitiger ID-Filter. Leer heisst: ganzer Kanal im Zeitfenster.",
+        description="Server-side id filter. Empty means: whole channel in the time window.",
     )
     requires_admin: bool = False
     with_xml: bool = Field(
         default=False,
-        description="Event-XML mitschreiben. Teuer, nur wo EventData gebraucht wird.",
+        description="Also store the event XML. Expensive; only where EventData is needed.",
     )
     max_retained: int | None = Field(
         default=None,
-        description="Eigene Obergrenze fuer behaltene Rohdaten; None erbt den globalen Wert.",
+        description="Own upper limit for retained raw data; None inherits the global value.",
     )
 
 
-#: Kanaltypen, die Get-WinEvent ohne Sonderbehandlung lesen kann. Analytic- und
-#: Debug-Kanaele sind Ablaufprotokolle: meist abgeschaltet, und wenn aktiv, dann
-#: nur vorwaerts lesbar - fuer eine Fehlersuche ueber ein Zeitfenster ungeeignet.
+#: Channel types Get-WinEvent can read without special treatment. Analytic and
+#: Debug channels are trace logs: usually disabled, and when active, readable
+#: only forward - unsuitable for searching errors over a time window.
 SWEEP_LOG_TYPES = ("Administrative", "Operational", "Analytic", "Debug")
 
 
 class ErrorSweepConfig(BaseModel):
-    """Fehler-Sweep: alle aktiven Kanaele, aber nur Kritisch und Fehler.
+    """Error sweep: every active channel, but only critical and error.
 
-    Die Kanalliste unter ``channels`` deckt die Kernkanaele vollstaendig ab. Der
-    Sweep ergaenzt den Rest des Systems - die mehreren hundert Kanaele, in denen
-    Treiber und Komponenten ihre Abstuerze ablegen, ohne dass jemand sie
-    einzeln kennt. Gefiltert wird ueber den numerischen Level, nie ueber
-    ``LevelDisplayName``: Der ist lokalisiert.
+    The channel list under ``channels`` covers the core channels completely.
+    The sweep adds the rest of the system - the several hundred channels in
+    which drivers and components record their crashes without anyone knowing
+    them individually. Filtering uses the numeric level, never
+    ``LevelDisplayName``: that is localized.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -52,42 +52,42 @@ class ErrorSweepConfig(BaseModel):
     enabled: bool = True
     levels: list[int] = Field(
         default_factory=lambda: [1, 2],
-        description="1 = Kritisch, 2 = Fehler, 3 = Warnung. 0 (LogAlways) ist kein Schweregrad.",
+        description="1 = critical, 2 = error, 3 = warning. 0 (LogAlways) is not a severity.",
     )
     log_types: list[str] = Field(
         default_factory=lambda: ["Administrative", "Operational"],
-        description="Welche Kanaltypen der Sweep beruecksichtigt.",
+        description="Which channel types the sweep considers.",
     )
     exclude: list[str] = Field(
         default_factory=list,
         description=(
-            "Zusaetzlich auszulassende Kanaele. Die unter 'channels' konfigurierten "
-            "Kanaele werden immer ausgelassen, damit nichts doppelt zaehlt."
+            "Additional channels to skip. The channels configured under 'channels' "
+            "are always skipped so nothing is counted twice."
         ),
     )
     days: int | None = Field(
         default=None,
-        description="Eigenes Zeitfenster in Tagen; None erbt das globale Fenster.",
+        description="Own time window in days; None inherits the global window.",
     )
     max_retained_per_channel: int = Field(
         default=5_000,
         ge=1,
-        description="Obergrenze BEHALTENER Records je Sweep-Kanal. Gezaehlt wird immer alles.",
+        description="Upper limit of RETAINED records per sweep channel. Everything is counted.",
     )
     timeout_seconds: float = Field(
         default=600.0,
         gt=0,
-        description="Wall-Clock fuer den gesamten Sweep, nicht je Kanal.",
+        description="Wall clock for the whole sweep, not per channel.",
     )
 
     @field_validator("levels")
     @classmethod
     def _known_levels(cls, value: list[int]) -> list[int]:
         if not value:
-            raise ValueError("levels darf nicht leer sein - dann den Sweep abschalten")
+            raise ValueError("levels must not be empty - disable the sweep instead")
         unknown = [level for level in value if level not in {1, 2, 3, 4, 5}]
         if unknown:
-            raise ValueError(f"unbekannte Level: {unknown}; erlaubt sind 1 bis 5")
+            raise ValueError(f"unknown levels: {unknown}; allowed are 1 to 5")
         return sorted(set(value))
 
     @field_validator("log_types")
@@ -96,7 +96,7 @@ class ErrorSweepConfig(BaseModel):
         unknown = [entry for entry in value if entry not in SWEEP_LOG_TYPES]
         if unknown:
             raise ValueError(
-                f"unbekannte Kanaltypen: {unknown}; erlaubt: {', '.join(SWEEP_LOG_TYPES)}"
+                f"unknown channel types: {unknown}; allowed: {', '.join(SWEEP_LOG_TYPES)}"
             )
         return value
 
@@ -113,7 +113,7 @@ class CollectConfig(BaseModel):
     powershell_preference: list[str] = Field(default_factory=lambda: ["pwsh", "powershell"])
     xml_for: list[str] = Field(
         default_factory=list,
-        description="Provider/ID-Paare als 'Provider:ID', fuer die das Event-XML geholt wird.",
+        description="Provider/id pairs as 'Provider:ID' for which the event XML is fetched.",
     )
     reliability_records: bool = True
     wer_reports: bool = True
@@ -144,6 +144,13 @@ class RulesConfig(BaseModel):
 
 
 class AiConfig(BaseModel):
+    """The optional language model layer.
+
+    Everything works without it: the report is built from the rule engine, and
+    the AI only explains what the rules already found. ``enabled: true`` with
+    an unreachable Ollama is a normal state, not an error.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
@@ -158,7 +165,10 @@ class AiConfig(BaseModel):
     message_excerpt_chars: int = 400
     allow_cloud: bool = Field(
         default=False,
-        description="Ausdrueckliches Opt-in. Ohne diesen Schalter wird nur localhost akzeptiert.",
+        description=(
+            "Explicit opt-in. Without it only localhost is accepted, and models that "
+            "Ollama forwards to a remote service are refused."
+        ),
     )
     redact: bool = True
 
@@ -166,18 +176,18 @@ class AiConfig(BaseModel):
     @classmethod
     def _low_temperature(cls, value: float) -> float:
         if value > 1.0:
-            raise ValueError("temperature ueber 1.0 ist fuer Diagnosetexte nicht sinnvoll")
+            raise ValueError("a temperature above 1.0 makes no sense for diagnostic text")
         return value
 
 
 class ProbesConfig(BaseModel):
-    """Kontext-Sonden: messen den aktuellen Zustand zu einem Befund.
+    """Context probes: measure the current state related to a finding.
 
-    Sonden laufen nur auf dem Rechner, von dem der Lauf stammt, und nur im
-    lokalen Netz. Es gibt bewusst keinen Schalter fuer einen Internet-Speedtest:
-    Der braeche "offline lauffaehig", "keine Telemetrie" (die eigene IP ginge an
-    den Anbieter) und "read-only" gleichzeitig - er saettigt die Leitung und
-    erzeugt auf einem gestoerten Rechner genau die Stoerung, die man sucht.
+    Probes only run on the machine the run came from, and only within the local
+    network. There is deliberately no switch for an internet speed test: it
+    would break "works offline", "no telemetry" (the own IP would go to the
+    provider) and "read-only" at the same time - it saturates the line and
+    produces on a troubled machine exactly the disturbance one is looking for.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -187,7 +197,7 @@ class ProbesConfig(BaseModel):
     services: bool = True
     storage: bool = True
     timeout_seconds: float = Field(
-        default=30.0, description="Obergrenze je Sondenaufruf, nicht je Ziel."
+        default=30.0, description="Upper limit per probe call, not per target."
     )
     ping_count: int = Field(default=3, ge=1, le=10)
     ping_timeout_ms: int = Field(default=1500, ge=100, le=10_000)
@@ -199,11 +209,11 @@ class ReportConfig(BaseModel):
     formats: list[str] = Field(default_factory=lambda: ["html", "md", "json"])
     redacted: bool = False
     raw_appendix_limit: int = 200
-    title: str = "WinEventAI Diagnosebericht"
+    title: str = "WinEventAI diagnostic report"
 
 
 class Config(BaseModel):
-    """Vollstaendige Konfiguration eines Laufs."""
+    """Complete configuration of a run."""
 
     model_config = ConfigDict(extra="forbid")
 

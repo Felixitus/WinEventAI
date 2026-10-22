@@ -1,54 +1,102 @@
-# WinEventAI — Uebergabestand
+# WinEventAI - Handover
 
-**Version 1.3.0 · 243 Tests gruen · ruff sauber · Stand 13.09.2026**
+**Version 2.0.0 · 257 tests green · ruff clean · as of 22 Oct 2026**
 
-Diese Datei ist der vollstaendige Wissensstand fuer eine Weiterentwicklung
-ausserhalb der urspruenglichen Sitzung. Der Arbeitsvertrag steht in
-`AGENTS.md`; hier stehen Umfang, Begruendungen und offene Punkte.
+This file is the complete state of knowledge for further development outside
+the original session. The working contract is in `AGENTS.md`; this file holds
+scope, rationale and open items.
 
 ---
 
-## 1. Umfang
+## 1. Scope
 
-~11.360 Zeilen Python in 73 Modulen, 8 PowerShell-Skripte, 30 Regeln in
-6 YAML-Dateien, 243 Tests in 15 Dateien.
+~12,700 lines of Python in 76 modules, 9 PowerShell collection/probe scripts,
+30 rules in 6 YAML files, 257 tests in 15 files.
 
-| Paket | Zeilen | Aufgabe |
+| Package | Lines | Task |
 |---|---:|---|
-| `gui/` | 1909 | PySide6-Oberflaeche |
-| `collect/` | 1709 | Erhebung, PowerShell, Laufverzeichnis |
-| `probes/` | 1511 | Kontext-Sonden |
-| `ai/` | 1419 | Ollama, Bundles, Redaction, Belegpruefung |
-| `report/` | 722 | HTML/Markdown/JSON |
-| `enrich/` | 709 | Dedup, Burst, Boot, Korrelation, Retention |
-| `rules/` | 572 | Regelschema, Loader, Engine |
-| `security/` | 410 | Sicherheitsmodus |
-| `normalize/` | 372 | Event-Schema, Maskierung |
-| `config/` | 361 | Modell, Layering, `config init` |
-| `kb/` | 307 | Wissensbasis |
-| `evidence/` | 207 | Evidenz-Bundle |
-| `cli.py` | 736 | Typer |
-| `analyze.py` | 219 | Pipeline-Verdrahtung |
+| `collect/` | 2384 | Collection, PowerShell, run directory, error sweep |
+| `gui/` | 2178 | PySide6 user interface |
+| `probes/` | 1507 | Context probes |
+| `ai/` | 1489 | Ollama, bundles, redaction, evidence check, cloud guard |
+| `report/` | 715 | HTML/Markdown/JSON |
+| `enrich/` | 704 | Dedup, burst, boot, correlation, retention |
+| `rules/` | 615 | Rule schema, loader, engine |
+| `kb/` | 464 | Knowledge base incl. legacy migration |
+| `config/` | 441 | Model, layering, `config init` |
+| `security/` | 412 | Security mode |
+| `normalize/` | 371 | Event schema, masking |
+| `evidence/` | 206 | Evidence bundle |
+| `cli.py` | 764 | Typer |
+| `analyze.py` | 224 | Pipeline wiring |
 
-Tests je Datei: ai 20, gui 24, probes 29, rules 17, evidence/config 15,
-enrich 14, report 12, config_init 11, ollama_status 10, collect_shell 8,
-security 8, normalize 6, end_to_end 6.
+Tests per file: gui 32, probes 29, collect_sweep 27, ai 21, collect_shell 19,
+rules 18, evidence/config 15, ollama_status 15, enrich 14, config_init 13,
+report 13, kb_stats 9, security 8, end_to_end 7, normalize 6.
 
-## 2. Abhaengigkeiten
+## 2. Version 2.0: what changed and why
+
+2.0 is a **breaking** release: code, comments, user-visible texts, CLI output,
+reports, prompts and documentation are English. Identifiers were English
+before; now everything is.
+
+Breaking surfaces and how compatibility is kept:
+
+| Surface | 1.x | 2.0 | Compatibility |
+|---|---|---|---|
+| Status values | `keine treffer`, `kanal fehlt`, ... | `no hits`, `not available`, ... | `_missing_` on `SourceStatus`, `Severity`, `Classification`, `KbConfidence` accepts the German values (old `sources.json`, old overlays) |
+| Rule fields | `bedeutung`, `typische_ursachen`, `empfohlene_pruefungen` | `meaning`, `typical_causes`, `recommended_checks` | `model_validator(mode="before")` maps the old names on `RuleDefinition` and `KbEntry` |
+| KB database | German columns, `sicher/unsicher/leer` | `meaning`, `source_url`, `checked_on`, ...; `verified/unverified/empty` | `kb.store._migrate_legacy_schema` renames columns in place, maps confidence, rebuilds `kb_fts` and reloads the seed; user entries are kept |
+| Report files | `bericht.html/md/json` | `report.html/md/json` | none - a new run writes the new names |
+| JSON report keys, manifest keys, probe payload keys | German | English | none - consumers have to be adapted |
+| Prompts | `*.de.txt` | `explainer.en.txt`, `correlator.en.txt` | none |
+| Rule ids | `scm-dienst-beendet`, ... | `scm-service-terminated`, ... | none - an overlay with an old id adds a rule instead of overriding |
+
+Deliberately still German:
+
+- `auditpol` subcategory names in `security/audit_policy.py`: they are what a
+  German Windows prints (known weakness, see open items).
+- NDJSON test fixtures: real German Windows messages prove that nothing
+  depends on localized text.
+
+### 2.1 Works without Ollama
+
+The language model is optional end to end:
+
+- `run`/`analyze` with Ollama unreachable, model missing or `--no-ai`: exit 0,
+  complete report from the rule engine, note
+  `ai.pipeline.RULES_ONLY_NOTE` in the report.
+- `doctor` reports an unreachable Ollama as a yellow note, not as an error.
+- The GUI checkbox reads *Use language model (not available - rules only)*;
+  the status bar says *No Ollama - rule engine only*.
+- Verified on Windows 11 26200 with the Ollama service stopped, both with the
+  Python package and with the built `wineventai.exe`.
+
+### 2.2 Cloud guard
+
+Ollama can list remote models under `localhost` (e.g. `glm-5.2:cloud`); a
+chat with them sends the bundle to a cloud service although the URL is local.
+`ai.client.is_remote_model_entry` recognizes `/api/tags` entries with
+`remote_host`/`remote_model` or a name ending in `:cloud`/`-cloud`. Without
+`ai.allow_cloud: true` such a model counts as unusable in `status()`, and
+`chat_json` refuses it again (`CloudCallBlockedError`) - two checks, because
+the status may be stale by the time of the call.
+
+## 3. Dependencies
 
 `pydantic>=2.6`, `PyYAML>=6.0`, `Jinja2>=3.1`, `typer>=0.12`.
-Optional `[gui]`: `PySide6>=6.6`. Dev zusaetzlich `pytest`, `ruff`.
+Optional `[gui]`: `PySide6>=6.6`. Dev additionally `pytest`, `ruff`,
+`pyinstaller`.
 
-Der Ollama-Client benutzt bewusst `urllib` aus der Standardbibliothek statt
-`requests` — eine Abhaengigkeit weniger im PyInstaller-Bundle, und der
-Proxy-Umgang muss ohnehin von Hand gesteuert werden.
+The Ollama client deliberately uses `urllib` from the standard library rather
+than `requests` - one dependency less in the PyInstaller bundle, and proxy
+handling has to be controlled by hand anyway.
 
-`tiktoken` wurde ausdruecklich verworfen: es laedt beim ersten Aufruf ein
-Encoding aus dem Netz und braeche damit "vollstaendig offline". Die
-Token-Schaetzung kalibriert sich stattdessen selbst an `prompt_eval_count`
-aus der Ollama-Antwort.
+`tiktoken` was explicitly rejected: it downloads an encoding from the network
+on first use and would break "fully offline". The token estimate calibrates
+itself against `prompt_eval_count` from the Ollama response instead.
 
-## 3. Pipeline
+## 4. Pipeline
 
 ```
 collect ──► raw/*.ndjson ──► normalize ──► enrich ──► rules ──► kb
@@ -56,279 +104,291 @@ collect ──► raw/*.ndjson ──► normalize ──► enrich ──► ru
                         report ◄── probes ◄── ai ◄───────────────┘
 ```
 
-### 3.1 collect
+### 4.1 collect
 
-- Ein PowerShell-Skript je Quellart, Aufruf ueber `-File`.
-  `get_events.ps1` ist der Streaming-Collector: `ForEach-Object` +
-  `ConvertTo-Json -Compress -Depth 4`, eine Zeile je Record. Zeitstempel
-  formatiert das Skript selbst als `yyyy-MM-ddTHH:mm:ss.fffffffZ` — die
-  PowerShell-eigene DateTime-Serialisierung unterscheidet sich zwischen 5.1
-  und 7.
-- Letzte Zeile ist immer `{"__status": {...}}` mit `records`, `truncated` und
-  `exception` als .NET-**Typname**.
-- `collect/shell.py` trennt `read_ndjson` (kennt nur Zeilen) von `run_script`
-  (kennt Prozesse). Das ist die Testgrenze: der gesamte Collector ist ohne
-  Windows testbar.
-- `SourceResult` traegt `covered_from_utc` / `covered_to_utc` und
-  `coverage_gap` je Quelle.
-- Grenzen: 120 s Wall-Clock je Kanal, `max_retained_per_channel` (Default
-  200.000) auf **behaltene** Rohdaten, harter Abbruch ueber 5 Mio. Records.
-- **Fehler-Sweep** (`collect/sweep.py`, `sweep_errors.ps1`): alle aktiven
-  Administrative-/Operational-Kanaele ausser den konfigurierten, serverseitig
-  auf Level 1/2 gefiltert. EIN PowerShell-Prozess fuer alle Kanaele, weil
-  hunderte Prozessstarts die Laufzeit dominieren wuerden. Damit das
-  gemeinsame Zeitlimit (600 s) nichts verschluckt, schreibt das Skript zuerst
-  `{"__plan": ...}` und nach jedem Kanal `{"__channel": ...}`. Kanaele im Plan
-  ohne Abschlusszeile sind "abgebrochen", nie "keine Treffer". Kanaele ohne
-  Treffer werden nur in der Uebersichtszeile `sweep:uebersicht` gezaehlt;
-  jeder Kanal mit Treffern oder unvollstaendiger Erhebung bekommt eine eigene
-  Zeile `sweep:<Kanal>`. Bei `.evtx`-Auswertung laeuft kein Sweep (die
-  Kanalliste des Quellrechners fehlt) — Status "kanal fehlt" mit Vermerk.
+- One PowerShell script per source type, called via `-File`.
+  `get_events.ps1` is the streaming collector: `ForEach-Object` +
+  `ConvertTo-Json -Compress -Depth 4`, one line per record. The script formats
+  timestamps itself as `yyyy-MM-ddTHH:mm:ss.fffffffZ` - PowerShell's own
+  DateTime serialization differs between 5.1 and 7.
+- The last line is always `{"__status": {...}}` with `records`, `truncated`,
+  `exception` as .NET **type name** and `error_id` (FullyQualifiedErrorId).
+- Lists are passed as ONE `|`-separated string (`shell.LIST_SEPARATOR`,
+  `join_list_arg`). Comma lists into `[int[]]`/`[string[]]` fail via `-File`
+  under PS 5.1.
+- A missing status line means `FAILED`, never `EMPTY`
+  (`NdjsonResult.completed`).
+- `collect/shell.py` separates `read_ndjson` (knows only lines) from
+  `run_script` (knows processes). That is the test boundary.
+- `SourceResult` carries `covered_from_utc` / `covered_to_utc` and
+  `coverage_gap` per source.
+- Limits: 120 s wall clock per channel, `max_retained_per_channel` (default
+  200,000) on **retained** raw data, hard abort above 5 million records.
+- **Error sweep** (`collect/sweep.py`, `sweep_errors.ps1`): every active
+  Administrative/Operational channel apart from the configured ones, filtered
+  server-side to level 1/2. ONE PowerShell process for all channels, because
+  hundreds of process starts would dominate the run time. So that the shared
+  time limit (600 s) swallows nothing, the script first writes
+  `{"__plan": ...}` and a `{"__channel": ...}` line after each channel.
+  Channels in the plan without a closing line are "timed out", never "no
+  hits". Channels without hits are only counted in the summary row
+  `sweep:summary`; every channel with hits or incomplete collection gets a row
+  `sweep:<channel>`. With `.evtx` input no sweep runs (the source machine's
+  channel list is missing) - status "not available" with a note.
 
-### 3.2 normalize
+### 4.2 normalize
 
-`EventRecord` mit numerischem `level`/`task`/`opcode`/`keywords`,
-`properties` als positionaler Vektor, `event_data` nur wenn XML angefordert
-wurde. `masking.py` ersetzt GUID, SID, MAC, IP, UNC, Pfad, Hex und Zahlen —
-in dieser Reihenfolge, Spezifisches vor Allgemeinem, Zahlen zuletzt.
+`EventRecord` with numeric `level`/`task`/`opcode`/`keywords`, `properties` as
+a positional vector, `event_data` only when XML was requested. `masking.py`
+replaces GUID, SID, MAC, IP, UNC, path, hex and numbers - in this order,
+specific before general, numbers last.
 
-### 3.3 enrich
+### 4.3 enrich
 
-Ein einziger Durchlauf ueber den mit `heapq.merge(..., reverse=True)`
-zusammengefuehrten, absteigenden Strom erledigt Fingerprint, Zaehler,
-Stundenhistogramm, Boot-Session, Kontextfenster und Retention. Dadurch haengt
-der Speicherbedarf an der Zahl verschiedener Fingerprints, nicht an der Zahl
-der Events.
+One single pass over the descending stream merged with
+`heapq.merge(..., reverse=True)` does fingerprint, counters, hour histogram,
+boot session, context window and retention. Memory therefore depends on the
+number of distinct fingerprints, not on the number of events.
 
-Weil der Strom absteigend laeuft, wird aus "Kontext vor dem Absturz" technisch
-eine Vorwaertspufferung.
+Because the stream runs descending, "context before the crash" technically
+becomes forward buffering.
 
-Retention: Prioritaets-Reservoir P1 Regeltreffer, P2 Kontext, P3 Level ≤ 2 bei
-60 %, P4 Reservoir-Sampling mit festem Seed.
+Retention: priority reservoir P1 rule hits, P2 context, P3 level ≤ 2 at 60 %,
+P4 reservoir sampling with a fixed seed.
 
-### 3.4 rules
+### 4.4 rules
 
-30 Regeln in `core_application`, `core_system`, `hardware`, `noise`,
-`security`, `storage`. Overlay aus `%PROGRAMDATA%\WinEventAI\rules`.
+30 rules in `core_application`, `core_system`, `hardware`, `noise`,
+`security`, `storage`. Overlay from `%PROGRAMDATA%\WinEventAI\rules`.
 
-Regel-IDs:
-`application-error-1000 application-hang-1002 wer-report minidump-vorhanden
-kernel-power-41 eventlog-6008 bugcheck-1001 scm-dienst-beendet
-scm-dienst-startet-nicht eventlog-boot-marker whea-korrigiert
-whea-nicht-korrigiert kernel-pnp-219 windowsupdate-fehler dcom-10016
-dhcp-warnung-1003 perflib-1008 dns-client-1014 sec-protokoll-geloescht
-sec-protokoll-geloescht-104 sec-audit-policy-geaendert
-sec-anmeldefehler-serie sec-remote-anmeldung sec-konto-und-gruppe
-sec-neuer-dienst sec-powershell-scriptblock sec-prozesserstellung
-disk-io-fehler storahci-reset-129 ntfs-dateisystemschaden`
+Rule ids:
+`application-error-1000 application-hang-1002 wer-report minidump-present
+kernel-power-41 eventlog-6008 bugcheck-1001 scm-service-terminated
+scm-service-start-failed eventlog-boot-marker whea-corrected whea-uncorrected
+kernel-pnp-219 windowsupdate-failure dcom-10016 dhcp-warning-1003
+perflib-1008 dns-client-1014 sec-log-cleared sec-log-cleared-104
+sec-audit-policy-changed sec-logon-failure-series sec-remote-logon
+sec-account-and-group sec-new-service sec-powershell-scriptblock
+sec-process-creation disk-io-error storahci-reset-129
+ntfs-filesystem-corruption`
 
-Der Schema-Validator lehnt eine Regel ohne `provider` ab und verlangt bei
-`message_regex` ein `locale:`-Feld.
+The schema validator rejects a rule without `provider` and requires a
+`locale:` field with `message_regex`.
 
-### 3.5 kb
+### 4.5 kb
 
-SQLite. Schluessel ist `provider` + `event_id`, nicht die ID allein.
-`confidence` hat eine **Folge im Code**: nur `sicher` wird in den Prompt
-eingebettet; alles andere erscheint im Bericht als "keine gesicherte Bedeutung
-hinterlegt". Nicht abgedeckte Paare landen in `unknown_ids.csv` als
-Arbeitsliste. Die KB verlinkt Quellen, statt fremden Text zu kopieren.
+SQLite. The key is `provider` + `event_id`, not the id alone. `confidence`
+has a **consequence in the code**: only `verified` is embedded in the prompt;
+everything else appears in the report as "no verified meaning on record".
+Uncovered pairs land in `unknown_ids.csv` as a work list. The KB links
+sources instead of copying foreign text.
 
-### 3.6 ai
+### 4.6 ai
 
-- Strukturierte Ausgabe: JSON-Schema im `format`-Feld von Ollama.
-- Jede Aussage traegt `evidence` als strukturierte Felder (Provider, ID,
-  Zeitstempel). `verify.py` prueft jede Aussage einzeln gegen die Eingabe und
-  verwirft nur die ungedeckten — nicht die ganze Antwort.
-- Redaction mit stabilen Pseudonymen. Die Zuordnungstabelle liegt neben dem
-  Bericht und geht **nicht** mit (`--report-redacted`).
-- `num_ctx` wird gegen `/api/show` begrenzt.
-- `OllamaStatus` trennt `reachable` von `model_present`.
-- Lokale Adressen umgehen den Proxy aus der Umgebung.
+- Structured output: JSON schema in Ollama's `format` field.
+- Every statement carries `evidence` as structured fields (provider, id,
+  timestamp). `verify.py` checks each statement individually against the
+  input and rejects only the uncovered ones - not the whole answer.
+- Redaction with stable pseudonyms (`USER_1`, `HOST_1`, ...). The mapping
+  table lies next to the report and does **not** go along
+  (`--report-redacted`).
+- `num_ctx` is capped against `/api/show`.
+- `OllamaStatus` separates `reachable`, `model_present` and `remote_model`.
+- Local addresses bypass the proxy from the environment.
 
-### 3.7 probes (neu in 1.2.0)
+### 4.7 probes
 
-| Sonde | Haengt an | Misst |
+| Probe | Hangs on | Measures |
 |---|---|---|
-| `netz` | DNS-Client 1014, Dhcp-Client 1003, Tcpip 4227/4231, NetBT 4321 | Ping an DNS/Gateway/DHCP **plus echte Namensabfrage** |
-| `dienst` | SCM 7000/7009/7024/7031/7034/7043 | Zustand, Starttyp, Konto, Exit-Code |
-| `datentraeger` | disk 7/11/51/52/153, storahci/stornvme/iaStorA 129, Ntfs 55/98/137, volsnap 25, volmgr 46 | Gesundheit, Zuverlaessigkeitszaehler, SMART, freier Platz |
+| `network` | DNS Client 1014, Dhcp-Client 1003, Tcpip 4227/4231, NetBT 4321 | Ping to DNS/gateway/DHCP **plus a real name query** |
+| `service` | SCM 7000/7009/7024/7031/7034/7043 | State, start type, account, exit code |
+| `storage` | disk 7/11/51/52/153, storahci/stornvme/iaStorA 129, Ntfs 55/98/137, volsnap 25, volmgr 46 | Health, reliability counters, SMART, free space |
 
-Dateien: `base.py` (Begriffe), `shell.py` (Aufruf + NDJSON),
-`network.py`, `services.py`, `storage.py`, `runner.py`,
+Files: `base.py` (terms), `shell.py` (call + NDJSON), `network.py`,
+`services.py`, `storage.py`, `runner.py`,
 `scripts/probe_{network,services,storage}.ps1`.
 
-Datenmodell:
+Data model:
 
 ```python
 class ProbeStatus(StrEnum):
-    OK = "unauffaellig";       WARN = "auffaellig"
-    FAILED = "fehlgeschlagen"; NOT_APPLICABLE = "nicht anwendbar"
-    NO_PERMISSION = "keine rechte"; TIMED_OUT = "abgebrochen"
-    DISABLED = "abgeschaltet"; UNAVAILABLE = "nicht messbar"
+    OK = "unremarkable";   WARN = "conspicuous"
+    FAILED = "failed";     NOT_APPLICABLE = "not applicable"
+    NO_PERMISSION = "no permission"; TIMED_OUT = "timed out"
+    DISABLED = "disabled"; UNAVAILABLE = "not measurable"
 
 class ProbeBearing(StrEnum):
-    SUPPORTS = "stuetzt den Befund"
-    WEAKENS  = "spricht dagegen"
-    INCONCLUSIVE = "sagt dazu nichts"
+    SUPPORTS = "supports the finding"
+    WEAKENS  = "speaks against it"
+    INCONCLUSIVE = "says nothing about it"
 ```
 
-`NO_MEASUREMENT` ist die Menge der Zustaende, in denen **nicht gemessen
-wurde** — `ProbeResult.measured` leitet sich daraus ab. Ein "unauffaellig" ist
-eine Messung; alles andere ist das Fehlen einer Messung und darf im Bericht nie
-wie eine Entwarnung aussehen.
+`NO_MEASUREMENT` is the set of states in which **nothing was measured** -
+`ProbeResult.measured` derives from it. "unremarkable" is a measurement;
+everything else is the absence of a measurement and must never look like an
+all-clear in the report.
 
-Jede Sonde implementiert `target_for(finding) -> str | None` und
-`run(targets: dict[str, list[Finding]]) -> list[ProbeResult]`.
-Der Runner sammelt alle Ziele und startet jede Sonde **genau einmal**.
+Every probe implements `target_for(finding) -> str | None` and
+`run(targets: dict[str, list[Finding]]) -> list[ProbeResult]`. The runner
+collects all targets and starts each probe **exactly once**.
 
-### 3.8 report
+### 4.8 report
 
-`ReportModel` ist die einzige Quelle fuer HTML, Markdown und JSON — die drei
-entstehen aus dem Modell, nicht auseinander. Das HTML ist eine einzige Datei
-ohne externe Ressourcen: kein CDN, keine nachgeladene Schrift. Eine
-HTML-Datei, die beim Oeffnen ins Netz greift, ist auf einem untersuchten
-Rechner das falsche Signal.
+`ReportModel` is the single source for HTML, Markdown and JSON - the three
+arise from the model, not from each other. The HTML is one single file
+without external resources: no CDN, no downloaded font. An HTML file that
+reaches into the network when opened is the wrong signal on an examined
+machine.
 
-### 3.9 gui
+### 4.9 gui
 
-PySide6 statt FastAPI+HTML (Entscheidung des Auftraggebers). Lauf im `QThread`.
-Kein QtWebEngine (~150 MB Chromium); der HTML-Bericht oeffnet im
-System-Browser. `theme.py` teilt die Palette mit dem Bericht, `delegates.py`
-zeichnet Schweregrad und Quellstatus als Chips — Farbe allein waere die
-einzige Unterscheidung, und rund acht Prozent der Maenner halten Rot und
-Orange nicht auseinander.
+PySide6 rather than FastAPI+HTML (client's decision). The run happens in a
+`QThread`. No QtWebEngine (~150 MB Chromium); the HTML report opens in the
+system browser. `theme.py` shares the palette with the report,
+`delegates.py` paints severity and source status as chips - colour alone
+would be the only distinction otherwise, and about eight percent of men
+cannot tell red from orange.
 
-## 4. Laufverzeichnis
+## 5. Run directory
 
 ```
 %PROGRAMDATA%\WinEventAI\runs\2026-09-10T14-22-03Z_WS-4711\
-  run.json                 Zeitfenster, Host, Konto, Tool-Version, TZ-Offset
-  sources.json             je Quelle: Status, abgedeckter Zeitraum, Zahlen
-  raw\*.ndjson             ein Record je Zeile, absteigend nach Zeit
-  derived\groups.json      Fingerprint-Gruppen
-  derived\findings.json    Regeltreffer (enthaelt jetzt "sonden")
-  derived\bundles\*.json   exakt das, was an das Modell ging (nach Redaction)
-  derived\ai\*.json        exakt das, was zurueckkam, plus Pruefergebnis
-  report\bericht.html|md|json
-  unknown_ids.csv          Arbeitsliste fuer die Wissensbasis
-  applog.jsonl             eigenes Anwendungslog, getrennt vom Material
+  run.json                 time window, host, account, tool version, TZ offset
+  sources.json             per source: status, covered period, figures
+  raw\*.ndjson             one record per line, descending by time
+  derived\groups.json      fingerprint groups
+  derived\findings.json    rule hits (including "probes")
+  derived\bundles\*.json   exactly what went to the model (after redaction)
+  derived\ai\*.json        exactly what came back, plus verification result
+  report\report.html|md|json
+  unknown_ids.csv          work list for the knowledge base
+  applog.jsonl             own application log, separate from the material
 ```
 
-## 5. Konfiguration
+## 6. Configuration
 
-Schichtung: mitgelieferte Vorgaben → `%PROGRAMDATA%\WinEventAI\wineventai.yaml`
-→ `--config` → CLI-Schalter. Listen werden **ersetzt**, nicht zusammengefuehrt.
+Layering: bundled defaults → `%PROGRAMDATA%\WinEventAI\wineventai.yaml` →
+`--config` → CLI switches. Lists are **replaced**, not merged.
 
-`config init` schreibt die Datei **vollstaendig auskommentiert**. Wirksam wird
-nur, was jemand einkommentiert. Grund: Eine Datei, die niemand angelegt hat,
-liest auch niemand — friert aber trotzdem Werte ein.
+`config init` writes the file **completely commented out**. Only what someone
+uncomments takes effect. Reason: a file nobody created is read by nobody - but
+it still freezes values.
 
-**Dokumentierte Falle im Dateikopf:** Wer nur `#   days: 7` einkommentiert,
-ohne den Elternschluessel `collect:`, landet bei einem Top-Level-`days`, und
-pydantic lehnt das ab. Dafuer gibt es einen eigenen Test
-(`test_vergessener_elternschluessel_bricht_sichtbar_ab`).
+**Documented trap in the file header:** whoever uncomments only `#   days: 7`
+without the parent key `collect:` ends up with a top-level `days`, and
+pydantic rejects it. There is a dedicated test
+(`test_a_forgotten_parent_key_fails_visibly`).
 
-Abschnitte: `collect`, `enrich`, `rules`, `ai`, `probes`, `report`,
-`log_level`.
+Sections: `collect` (including `error_sweep`), `enrich`, `rules`, `ai`,
+`probes`, `report`, `log_level`.
 
-## 6. Auslieferung
+`Microsoft-Windows-Kernel-Power/Operational` was removed from the default
+channels: it does not exist on Windows 11, and Kernel-Power 41 is in System
+anyway.
 
-- Entwicklung ueber pip, Auslieferung ueber PyInstaller **one-dir**.
-- Zwei EXE aus einer Analyse: `wineventai.exe` (`console=True`) und
-  `wineventai-gui.exe` (`console=False`). QtWebEngine, QML, Quick, Charts sind
-  ausgeschlossen. `upx=False`.
-- Kein Codesigning-Zertifikat. Verteilung ueber internen Share mit
-  dokumentiertem SHA-256.
-- `resources.py` ist der einzige Ort, der `_MEIPASS`, das EXE-Verzeichnis und
-  `importlib.resources` kennt.
+## 7. Delivery
 
-## 7. Evidenz
+- Development via pip, delivery via PyInstaller **one-dir**
+  (`packaging/wineventai.spec`, `packaging/build.ps1`).
+- Two EXEs from one analysis: `wineventai.exe` (`console=True`) and
+  `wineventai-gui.exe` (`console=False`). `__main__.wants_gui` picks the mode
+  by the EXE name. QtWebEngine, QML, Quick, Charts are excluded. `upx=False`.
+- No code-signing certificate. Distribution via an internal share with the
+  documented SHA-256.
+- `resources.py` is the only place that knows `_MEIPASS`, the EXE directory
+  and `importlib.resources`.
 
-ZIP mit den **originalen `.evtx`**. Der Hash geht ueber das Original, nicht
-ueber den Auszug. Das Bundle ist **nicht redigiert** — es ist Evidenz; die
-Redaction betrifft ausschliesslich den Pfad zum Sprachmodell, und die
-Zuordnungstabelle wird nicht mit exportiert.
+## 8. Evidence
 
-## 8. Behobene Fehler (mit der Lehre dahinter)
+ZIP with the **original `.evtx`**. The hash is taken over the original, not
+over the extract. The bundle is **not redacted** - it is evidence; redaction
+applies exclusively to the path to the language model, and the mapping table
+is not exported.
 
-| Version | Fehler | Lehre |
+## 9. Fixed bugs (with the lesson behind them)
+
+| Version | Bug | Lesson |
 |---|---|---|
-| — | Burst feuerte nie bei konzentrierten Ereignissen: Median der belegten Stunden = 64, wenn alle 64 Events in einer Stunde liegen | Basislinie ueber das ganze Fenster, nicht ueber belegte Stunden |
-| — | 1400× DCOM 10016 fuellte das P1-Kontingent | Rauschregeln zaehlen nicht als Regeltreffer |
-| — | YAML-Listeneintrag mit `": "` wurde Mapping | 5 Stellen in Anfuehrungszeichen |
-| 1.0.1 | Fehlendes Modell meldete sich als "Ollama nicht erreichbar" | 404 von `/api/show` ist nicht "unerreichbar"; `OllamaStatus` trennt beides |
-| 1.0.1 | `urllib` nahm `HTTP_PROXY` auch fuer localhost | `ProxyHandler({})` fuer lokale Adressen |
-| 1.0.2 | Benutzerkonfiguration entstand nie | `config init`, vollstaendig auskommentiert |
-| 1.1.0 | `GuiLogStream` haengte das **prozessweite** Log an das Signal EINES Workers; nach dessen Tod warf jeder Log-Aufruf "Signal source has been deleted" und riss 13 fremde Tests mit | Der Stream faengt `RuntimeError`, der Worker loest das globale Log im `finally` |
-| 1.1.1 | `pip install "wineventai[gui]"` schlug fehl | Dokumentationsfehler — das Paket liegt nicht auf PyPI; `install.ps1` entfernt eine vorhandene Installation zuerst |
-| 1.1.1 | Schweregrad-Chips rechts abgeschnitten | `sizeHint` verbreitert, Clip gelockert |
-| 1.3.0 | System, Application und Setup meldeten auf einem echten Windows 11 "keine Treffer, 0 gelesen". `-XmlForIds "1001,4624,..."` scheiterte ueber `-File` an der `[int[]]`-Umwandlung, das Skript lief nie, und null Zeilen ohne Statuszeile wurden als leer gewertet | Listen gehen als `\|`-getrennte Zeichenkette an jedes Skript (`shell.LIST_SEPARATOR`); fehlt die Statuszeile, ist die Quelle `FAILED` mit der FullyQualifiedErrorId aus stderr - nie `EMPTY` |
-| 1.3.0 | Dasselbe bei den Sonden: `-Role "dns,gateway"` kam als EIN Element an (`-contains 'dns'` still falsch), `-DisplayName a b c` band nur den ersten Namen | dieselbe Listen-Konvention |
-| 1.3.0 | Ein fehlender Kanal (`Kernel-Power/Operational` gibt es auf Windows 11 nicht) erschien als "keine Treffer" | Unterscheidung ueber die sprachneutrale FullyQualifiedErrorId: `NoMatchingEventsFound` = leer, `NoMatchingLogsFound` = Kanal fehlt (`base.ERROR_ID_STATUS`) |
-| 1.3.0 | `doctor` meldete vorhandene Kanaele als "FEHLT": `-ListLog * -ErrorAction Stop` brach ohne Adminrechte beim ersten nicht lesbaren Kanal ab | `list_channels.ps1` prueft jeden konfigurierten Namen einzeln und trennt fehlend / nicht lesbar |
-| 1.3.0 | Status-Chips in der Abdeckungstabelle doppelt beschriftet | `QStyledItemDelegate.paint` fuellt den Text intern neu; Hintergrund wird jetzt direkt ueber `drawControl` gezeichnet |
-| 1.3.0 | Hinweise je Quelle standen nur im Tooltip | eigene Spalte "Hinweis" |
-| 1.3.0 | Die gebaute EXE startete nicht: `__main__.py` importierte relativ (`from .cli import cli`), PyInstaller fuehrt die Datei aber als Skript ohne Paket aus. Die GUI-EXE haette zudem die Kommandozeile gestartet | absolute Importe, Weiche nach EXE-Name (`wants_gui`); beide EXE auf Windows 11 gestartet und geprueft |
+| - | Burst never fired on concentrated events: median of occupied hours = 64 when all 64 events lie in one hour | Baseline over the whole window, not over occupied hours |
+| - | 1400× DCOM 10016 filled the P1 quota | Noise rules do not count as rule hits |
+| - | YAML list entry with `": "` became a mapping | Quote those entries |
+| 1.0.1 | A missing model reported itself as "Ollama not reachable" | 404 from `/api/show` is not "unreachable"; `OllamaStatus` separates both |
+| 1.0.1 | `urllib` used `HTTP_PROXY` for localhost too | `ProxyHandler({})` for local addresses |
+| 1.0.2 | The user configuration never came into existence | `config init`, completely commented out |
+| 1.1.0 | `GuiLogStream` attached the **process-wide** log to the signal of ONE worker; after its death every log call raised "Signal source has been deleted" | The stream catches `RuntimeError`, the worker detaches the global log in `finally` |
+| 1.1.1 | `pip install "wineventai[gui]"` failed | Documentation error - the package is not on PyPI; `install.ps1` removes an existing installation first |
+| 1.3.0 | System, Application and Setup reported "no hits, 0 read" on a real Windows 11. `-XmlForIds "1001,4624,..."` failed via `-File` on the `[int[]]` conversion, the script never ran, and zero lines without a status line counted as empty | Lists go as a `\|`-separated string; without a status line the source is `FAILED` with the FullyQualifiedErrorId from stderr - never `EMPTY` |
+| 1.3.0 | The same for the probes: `-Role "dns,gateway"` arrived as ONE element | Same list convention |
+| 1.3.0 | A missing channel appeared as "no hits" | Distinguished by the language-neutral FullyQualifiedErrorId: `NoMatchingEventsFound` = empty, `NoMatchingLogsFound` = channel missing (`base.ERROR_ID_STATUS`) |
+| 1.3.0 | `doctor` reported present channels as missing: `-ListLog * -ErrorAction Stop` aborted without admin rights on the first unreadable channel | `list_channels.ps1` checks each configured name individually and separates missing / unreadable |
+| 1.3.0 | Status chips labelled twice | `QStyledItemDelegate.paint` refills the text internally; the background is now painted directly via `drawControl` |
+| 1.3.0 | The built EXE did not start: `__main__.py` imported relatively, but PyInstaller runs the file as a script without a package | Absolute imports, switch by EXE name (`wants_gui`); both EXEs started and checked on Windows 11 |
+| 2.0.0 | A cloud model listed by the local Ollama would have received the bundle although `allow_cloud` was off | Cloud guard on `/api/tags` entries, checked in `status()` and again in `chat_json` |
 
-## 9. Offene Punkte
+## 10. Open items
 
-**Braucht echtes Windows:**
+**Needs real Windows:**
 
-1. **Die neun `.ps1`-Dateien sind unbewiesen.** Die Auswertung ab
-   `read_ndjson` / `read_payloads` / `parse_sweep` ist vollstaendig getestet,
-   die Skripte selbst nicht. Konkret unsicher:
-   - `sweep_errors.ps1` **auf Windows 11 26200 / PS 5.1 ohne Adminrechte
-     gelaufen**: 146 Kanaele im Plan, 4145 Fehler in 6 s. `-ListLog *` mit
-     `SilentlyContinue` laeuft weiter; nicht lesbare Kanaele (56) erscheinen
-     gar nicht in der Liste, sondern nur als `LogInfoUnavailable` in
-     `-ErrorVariable` - die `RecordCount`-Frage stellt sich damit nicht.
-     Unbestaetigt: mit Adminrechten, unter PowerShell 7, auf Server.
-   - Entscheidung zur Pruefung: Nicht lesbare Kanaele machen die
-     Uebersichtszeile NICHT unvollstaendig, sondern stehen dort nur als Zahl.
-     Ohne Adminrechte waere der Sweep sonst immer "unvollstaendig" und die
-     Markierung verloere ihre Aussage. Die Namen dieser Kanaele kennt das
-     Skript nicht.
-   - Liefert `Win32_NetworkAdapterConfiguration.DHCPServer` auf Server-Systemen
-     zuverlaessig einen Wert?
-   - Existiert `MSStorageDriver_FailurePredictStatus` ausserhalb von Hyper-V?
-   - Greift `Resolve-DnsName -QuickTimeout` unter PowerShell 5.1 wie erwartet?
-2. **Einwand E02:** Sind `Microsoft-Windows-WHEA-Logger` und `storahci`
-   wirklich nur Provider im System-Kanal und keine eigenen Kanaele?
-   `wineventai doctor` gleicht das ab — braucht eine echte Maschine.
-3. **Durchsatz des Collectors ungemessen.** An einem echten Security-Log
-   messen, bevor ueber `pywin32` als Alternative entschieden wird.
-4. ~~"Keine Ereignisse gefunden" nicht typisiert~~ — **geklaert in 1.3.0**
-   (Windows 11 26200, de-AT, PS 5.1): Typ ist immer `System.Exception`, aber
-   die FullyQualifiedErrorId unterscheidet `NoMatchingEventsFound` (leer) von
-   `NoMatchingLogsFound` (Kanal fehlt). **Neue Falle:** Security ohne
-   Adminrechte liefert ebenfalls `NoMatchingEventsFound`; davor schuetzt nur
-   die `requires_admin`-Pruefung. Unbestaetigt fuer PowerShell 7 und Server.
+1. **The `.ps1` files are only partly proven.** Evaluation from
+   `read_ndjson` / `read_payloads` / `parse_sweep` onward is fully tested, the
+   scripts themselves are not.
+   - `get_events.ps1`, `sweep_errors.ps1`, `list_channels.ps1`,
+     `get_reliability.ps1` **ran on Windows 11 26200 / PS 5.1 without admin
+     rights** (sweep: 146 channels, ~4,100 errors in 6 s). Unconfirmed: with
+     admin rights, under PowerShell 7, on Server.
+   - The three probe scripts (English payload keys since 2.0) **ran on the
+     same machine**: network (gateway, DHCP, DNS plus name query), services
+     (found/not found), storage (5 disks, volumes, SMART note). Unconfirmed:
+     server systems, PowerShell 7.
+   - Decision to review: unreadable channels do NOT make the sweep summary row
+     incomplete, they only appear there as a number. Without admin rights the
+     sweep would otherwise always be "incomplete" and the marking would lose
+     its meaning. The script does not know the names of these channels.
+   - Does `Win32_NetworkAdapterConfiguration.DHCPServer` reliably return a
+     value on server systems?
+   - Does `MSStorageDriver_FailurePredictStatus` exist outside Hyper-V?
+   - Does `Resolve-DnsName -QuickTimeout` work as expected under PowerShell
+     5.1?
+2. **Objection E02:** are `Microsoft-Windows-WHEA-Logger` and `storahci`
+   really only providers in the System channel and no channels of their own?
+   `wineventai doctor` checks this - needs a real machine.
+3. **Collector throughput unmeasured** on a real Security log, before deciding
+   on `pywin32` as an alternative.
+4. **Security without admin rights** also yields `NoMatchingEventsFound`; only
+   the `requires_admin` precheck protects against a false "no hits".
+   Unconfirmed for PowerShell 7 and Server.
+5. **`audit_policy.py` parses localized `auditpol` output.** It works on
+   German and English systems only. Better: query by subcategory GUID
+   (`auditpol /get /subcategory:{GUID} /r`) and decode the console output with
+   the OEM code page.
 
-**Noch nicht gebaut:**
+**Not built yet:**
 
-5. **`kb bench`** — Abnahmetest fuer die Modellwahl ist spezifiziert, aber
-   nicht implementiert. Solange ist die Modellwahl offen; Default steht auf
+6. **`ai bench`** - acceptance test for the model choice is specified but not
+   implemented. Until then the model choice is open; the default is
    `qwen2.5:14b-instruct`.
-6. **Weitere Sonden**, aber nur nach demselben Kriterium (jede Sonde muss
-   einen Befund erklaeren oder ausschliessen):
-   - Domaenencontroller zu Netlogon 5719 — braucht eine belastbare Quelle fuer
-     die DC-Adresse ohne `nltest`. Ungeloest.
-   - Zeitsynchronisierung zu W32Time 36/47 — plausibler Kandidat.
+7. **Further probes**, but only by the same criterion (every probe has to
+   explain or rule out a finding):
+   - Domain controller for Netlogon 5719 - needs a reliable source for the DC
+     address without `nltest`. Unsolved.
+   - Time synchronization for W32Time 36/47 - plausible candidate.
+8. **Unassessed error groups** from the sweep only get the original Windows
+   message. A model description for them would need its own evidence rules.
 
-## 10. Entscheidungen, die bewusst NICHT getroffen wurden
+## 11. Decisions deliberately NOT taken
 
-- **Kein Internet-Speedtest.** Er braeche drei Zusagen gleichzeitig: "offline
-  lauffaehig", "keine Telemetrie" (die eigene IP ginge an den Anbieter) und
-  "read-only" (er saettigt die Leitung und erzeugt auf einem gestoerten
-  Rechner genau die Stoerung, die man sucht).
-- **Kein automatisches Verkleinern des Zeitfensters bei Datenmengen.** Das
-  Ergebnis waere still unvollstaendig, und jemand liest "keine Befunde" fuer
-  einen Zeitraum, der nie analysiert wurde.
-- **Keine Sondenergebnisse im Prompt.** Sie tragen keine Event-IDs, also kann
-  die Belegpruefung sie nicht gegen die Eingabe halten. Alles Unpruefbare im
-  Bundle ist eine Einladung zum Erfinden. Deshalb laufen die Sonden in
-  `analyze_run` nach dem KI-Layer — strukturell, nicht per Konvention.
-- **Keine Messung auf einem fremden Rechner.** Der Runner vergleicht
-  `RunMeta.host` mit dem lokalen Namen und misst bei Abweichung nichts.
-- **Kein `nltest`, kein `fsutil dirty`, kein Selbsttest.** Alles entweder nicht
-  read-only oder nicht verlaesslich verfuegbar.
+- **No internet speed test.** It would break three promises at once: "works
+  offline", "no telemetry" (the own IP would go to the provider) and
+  "read-only" (it saturates the line and creates exactly the disturbance one
+  is looking for on a disturbed machine).
+- **No automatic shrinking of the time window for large data volumes.** The
+  result would be silently incomplete, and someone reads "no findings" for a
+  period that was never analyzed.
+- **No probe results in the prompt.** They carry no event ids, so the evidence
+  check cannot hold them against the input. Everything uncheckable in the
+  bundle is an invitation to invent. That is why the probes run after the AI
+  layer in `analyze_run` - structurally, not by convention.
+- **No measurement on a foreign machine.** The runner compares `RunMeta.host`
+  with the local name and measures nothing if they differ.
+- **No `nltest`, no `fsutil dirty`, no self-test.** All either not read-only
+  or not reliably available.

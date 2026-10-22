@@ -1,9 +1,9 @@
-"""CBS.log, DISM.log und setupapi.dev.log - nur Fehlerzeilen.
+"""CBS.log, DISM.log and setupapi.dev.log - error lines only.
 
-Diese Dateien sind hunderte Megabyte gross und zu 99 Prozent Rauschen. Gelesen
-wird zeilenweise und mitgenommen wird nur, was ein Fehlermuster trifft. Die
-Muster sind bewusst sprachneutral: In diesen Protokollen sind die Marker
-englisch, auch auf deutschen Systemen.
+These files are hundreds of megabytes and 99 percent noise. They are read line
+by line and only what matches an error pattern is kept. The patterns are
+deliberately language-neutral: the markers in these logs are English, even on
+German systems.
 """
 
 from __future__ import annotations
@@ -27,18 +27,18 @@ _ERROR_MARKER = re.compile(
     r"(?:\[SR\]\s+Cannot|\bError\b|\bFAILED\b|\bfailure\b|0x8[0-9A-Fa-f]{7}|!!!\s)",
 )
 
-# CBS und DISM: "2026-09-10 14:22:03, Error ..."
+# CBS and DISM: "2026-09-10 14:22:03, Error ..."
 _TIMESTAMP = re.compile(r"(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})")
 # setupapi: ">>>  Section start 2026/09/10 14:22:03.123"
 _TIMESTAMP_SLASH = re.compile(r"(\d{4}/\d{2}/\d{2})\s+(\d{2}:\d{2}:\d{2})")
 
 
 def parse_line_timestamp(line: str, fallback: datetime) -> datetime:
-    """Zieht den Zeitstempel aus einer Protokollzeile.
+    """Extracts the timestamp from a log line.
 
-    Diese Protokolle fuehren lokale Zeit ohne Zonenangabe. Ohne Zusatzwissen
-    wird sie als lokale Zeit interpretiert und nach UTC umgerechnet - jede
-    andere Annahme waere geraten.
+    These logs record local time without a zone. Lacking further knowledge it
+    is interpreted as local time and converted to UTC - any other assumption
+    would be a guess.
     """
     match = _TIMESTAMP.search(line) or _TIMESTAMP_SLASH.search(line)
     if not match:
@@ -52,7 +52,7 @@ def parse_line_timestamp(line: str, fallback: datetime) -> datetime:
 
 
 class LogFileCollector:
-    """Extrahiert Fehlerzeilen aus einer der bekannten Protokolldateien."""
+    """Extracts error lines from one of the known log files."""
 
     def __init__(
         self,

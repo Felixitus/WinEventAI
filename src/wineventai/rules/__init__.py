@@ -1,4 +1,4 @@
-"""Regel-Engine: deterministische Triage vor dem Sprachmodell."""
+"""Rule engine: deterministic triage before the language model."""
 
 from .engine import Finding, RuleEngine, unmatched_keys
 from .loader import RuleLoadError, builtin_rules, load_rules, overlay_dir, overlay_rules

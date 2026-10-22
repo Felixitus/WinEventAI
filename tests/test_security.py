@@ -1,4 +1,8 @@
-"""Sicherheitsmodus: Richtlinienpruefung, blinde Flecken, Zeitluecken."""
+"""Security mode: policy check, blind spots, timeline gaps.
+
+The German auditpol output below is test data on purpose: it is what a German
+Windows prints, and the parser must handle both language versions.
+"""
 
 from __future__ import annotations
 
@@ -25,72 +29,72 @@ WS-4711,System,Logon,{0CCE9215-69AE-11D9-BED3-505054503030},Success and Failure
 """
 
 
-def test_auditpol_wird_ueber_spaltenposition_gelesen_nicht_ueber_namen() -> None:
-    """Die Spaltenueberschriften sind uebersetzt, die Positionen nicht."""
-    deutsch = parse_auditpol(AUDITPOL_DE)
-    englisch = parse_auditpol(AUDITPOL_EN)
+def test_auditpol_is_read_by_column_position_not_by_name() -> None:
+    """The column headings are translated, the positions are not."""
+    german = parse_auditpol(AUDITPOL_DE)
+    english = parse_auditpol(AUDITPOL_EN)
 
-    assert deutsch["Prozesserstellung"] is PolicyState.INACTIVE
-    assert englisch["Process Creation"] is PolicyState.INACTIVE
-    assert deutsch["Anmelden"] is PolicyState.ACTIVE
-    assert englisch["Logon"] is PolicyState.ACTIVE
+    assert german["Prozesserstellung"] is PolicyState.INACTIVE
+    assert english["Process Creation"] is PolicyState.INACTIVE
+    assert german["Anmelden"] is PolicyState.ACTIVE
+    assert english["Logon"] is PolicyState.ACTIVE
 
 
-def test_abgeschaltete_kategorie_wird_zu_nicht_protokolliert() -> None:
+def test_a_switched_off_category_becomes_not_logged() -> None:
     checks = evaluate_policy(parse_auditpol(AUDITPOL_DE))
     blind = not_logged_event_ids(checks)
-    assert 4688 in blind, "ohne Prozessverfolgung entsteht keine 4688"
+    assert 4688 in blind, "without process tracking there is no 4688"
     assert 4624 not in blind
 
 
-def test_ohne_adminrechte_lautet_die_antwort_unbekannt_nicht_aktiv() -> None:
-    """Der gefaehrlichste Fehler waere, Unwissen als Unauffaelligkeit zu lesen."""
+def test_without_admin_rights_the_answer_is_unknown_not_active() -> None:
+    """The most dangerous error would be reading ignorance as inconspicuousness."""
     checks = evaluate_policy({})
     assert all(check.state is PolicyState.UNKNOWN for check in checks)
     assert not not_logged_event_ids(checks)
-    assert all("unbekannt" in check.hint.lower() for check in checks)
+    assert all("unknown" in check.hint.lower() for check in checks)
 
 
-def test_vorschlag_nennt_befehl_wirkung_risiko_und_rueckbau() -> None:
+def test_the_suggestion_names_command_effect_risk_and_rollback() -> None:
     checks = evaluate_policy(parse_auditpol(AUDITPOL_DE))
-    inaktiv = next(check for check in checks if check.state is PolicyState.INACTIVE)
-    vorschlag = fix_suggestion(inaktiv)
+    inactive = next(check for check in checks if check.state is PolicyState.INACTIVE)
+    suggestion = fix_suggestion(inactive)
 
-    assert set(vorschlag) == {"befehl", "wirkung", "risiko", "rueckbau"}
-    assert vorschlag["befehl"].startswith("auditpol /set")
-    assert "disable" in vorschlag["rueckbau"]
+    assert set(suggestion) == {"command", "effect", "risk", "rollback"}
+    assert suggestion["command"].startswith("auditpol /set")
+    assert "disable" in suggestion["rollback"]
 
 
-def test_luecke_zwischen_sitzungen_ist_kein_befund() -> None:
-    """Zwischen 6006 und 6005 war der Rechner aus - das ist keine Luecke."""
-    davor = make_record(minutes_ago=2000, channel="System")
-    danach = make_record(minutes_ago=10, channel="System")
-    davor.boot_session = 1
-    danach.boot_session = 0
+def test_a_gap_between_sessions_is_not_a_finding() -> None:
+    """Between 6006 and 6005 the machine was off - that is not a gap."""
+    before = make_record(minutes_ago=2000, channel="System")
+    after = make_record(minutes_ago=10, channel="System")
+    before.boot_session = 1
+    after.boot_session = 0
 
     sessions = [BootSession(index=0, event_count=1), BootSession(index=1, event_count=1)]
-    assert find_gaps([davor, danach], sessions, min_hours=6.0) == []
+    assert find_gaps([before, after], sessions, min_hours=6.0) == []
 
 
-def test_luecke_innerhalb_einer_sitzung_wird_gemeldet() -> None:
-    davor = make_record(minutes_ago=2000, channel="Security")
-    danach = make_record(minutes_ago=10, channel="Security")
-    davor.boot_session = 0
-    danach.boot_session = 0
+def test_a_gap_within_a_session_is_reported() -> None:
+    before = make_record(minutes_ago=2000, channel="Security")
+    after = make_record(minutes_ago=10, channel="Security")
+    before.boot_session = 0
+    after.boot_session = 0
 
-    gaps = find_gaps([davor, danach], [BootSession(index=0, event_count=2)], min_hours=6.0)
+    gaps = find_gaps([before, after], [BootSession(index=0, event_count=2)], min_hours=6.0)
     assert len(gaps) == 1
     assert gaps[0].hours > 6
-    assert "innerhalb einer laufenden Sitzung" in gaps[0].description
+    assert "within a running session" in gaps[0].description
 
 
-def test_sicherheitsbericht_ist_als_hinweis_gekennzeichnet() -> None:
+def test_the_security_report_is_marked_as_an_indication() -> None:
     report = build_security_report([], [], [], enabled=True, is_admin=False, policy_states={})
-    assert "keine forensische Feststellung" in report.disclaimer
-    assert report.has_blind_spots, "ohne abfragbare Richtlinie gibt es blinde Flecken"
+    assert "not a forensic finding" in report.disclaimer
+    assert report.has_blind_spots, "without a queryable policy there are blind spots"
 
 
-def test_abgeschalteter_sicherheitsmodus_liefert_leeren_bericht() -> None:
+def test_a_disabled_security_mode_delivers_an_empty_report() -> None:
     report = build_security_report([], [], [], enabled=False, is_admin=True)
     assert report.enabled is False
     assert not report.findings

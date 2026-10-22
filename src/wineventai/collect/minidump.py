@@ -1,8 +1,8 @@
-"""Minidumps: Existenz, Zeitstempel, Groesse. Kein Parser.
+"""Minidumps: existence, timestamp, size. No parser.
 
-Ein Dump-Parser ist ausdruecklich Nicht-Ziel der Version 1. Der Nutzen hier ist
-trotzdem hoch: Ein Minidump mit passendem Zeitstempel neben einem Kernel-Power
-41 verwandelt "unsauberer Neustart" in "Bluescreen mit vorhandenem Abbild".
+A dump parser is explicitly a non-goal of version 1. The value here is high
+anyway: a minidump with a matching timestamp next to a Kernel-Power 41 turns
+"unclean restart" into "blue screen with a dump on disk".
 """
 
 from __future__ import annotations
@@ -51,8 +51,8 @@ class MinidumpCollector:
                     requested_from_utc=self.window_from,
                     requested_to_utc=self.window_to,
                     note=(
-                        "Kein Minidump-Verzeichnis. Das kann heissen: keine Abstuerze - "
-                        "oder Abbilder sind per Systemeinstellung abgeschaltet."
+                        "No minidump directory. This can mean: no crashes - "
+                        "or dumps are disabled in the system settings."
                     ),
                 )
             )
@@ -88,8 +88,8 @@ class MinidumpCollector:
                     event_id=0,
                     level=1,
                     message=(
-                        f"Speicherabbild {dump.name} vorhanden, {stat.st_size} Bytes. "
-                        "Version 1 wertet den Inhalt nicht aus."
+                        f"Memory dump {dump.name} present, {stat.st_size} bytes. "
+                        "Version 1 does not analyze its content."
                     ),
                     properties=[dump.name, str(stat.st_size)],
                     source_tool=SOURCE_TOOL,

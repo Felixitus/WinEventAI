@@ -1,9 +1,9 @@
-"""Zuverlaessigkeitsverlauf ueber Win32_ReliabilityRecords.
+"""Reliability history via Win32_ReliabilityRecords.
 
-Der entscheidende Punkt ist nicht das Auslesen, sondern die Unterscheidung:
-Ist die Klasse leer, weil nichts passiert ist, oder weil der RACAgent-Task
-deaktiviert ist? Auf Servern ist Letzteres der Regelfall. Das Skript meldet den
-Task-Zustand mit; hier wird daraus ``NOT_LOGGED`` statt ``EMPTY``.
+The crucial point is not reading it but telling apart: is the class empty
+because nothing happened, or because the RACAgent task is disabled? On servers
+the latter is the rule. The script reports the task state as well; here it
+turns into ``NOT_LOGGED`` instead of ``EMPTY``.
 """
 
 from __future__ import annotations
@@ -16,8 +16,9 @@ from .shell import NdjsonResult, ShellInfo, read_ndjson, run_script, status_from
 
 SOURCE_TOOL = "powershell:win32-reliabilityrecords"
 
-#: Task-Zustaende, in denen der Zuverlaessigkeitsverlauf nicht gefuellt wird.
-_INACTIVE_STATES = {"disabled", "nicht vorhanden", "unknown"}
+#: Task states in which the reliability history is not filled. The German
+#: values are what scripts before version 2.0 wrote into run directories.
+_INACTIVE_STATES = {"disabled", "not present", "unknown", "nicht vorhanden", "unbekannt"}
 
 
 class ReliabilityCollector:
@@ -44,7 +45,7 @@ class ReliabilityCollector:
                     status=SourceStatus.DISABLED,
                     requested_from_utc=self.window_from,
                     requested_to_utc=self.window_to,
-                    note="Per Konfiguration abgeschaltet.",
+                    note="Disabled by configuration.",
                 )
             )
 
@@ -99,27 +100,27 @@ def build_reliability_result(
     timed_out: bool,
     source_id: str,
 ) -> SourceResult:
-    """Erzeugt das ``SourceResult`` und wertet dabei den RACAgent-Zustand aus."""
+    """Builds the ``SourceResult`` and evaluates the RACAgent state along the way."""
     status = status_for_exception(parsed.exception_type, parsed.records_read, parsed.error_id)
-    rac_state = str((parsed.status_line or {}).get("rac_state", "unbekannt")).strip().lower()
+    rac_state = str((parsed.status_line or {}).get("rac_state", "unknown")).strip().lower()
     note = None
 
     if status == SourceStatus.EMPTY and rac_state in _INACTIVE_STATES:
         status = SourceStatus.NOT_LOGGED
         note = (
-            "Der Zuverlaessigkeitsverlauf wird auf diesem System nicht gefuehrt "
-            f"(RacTask: {rac_state}). Das ist kein Befund, sondern eine Luecke."
+            "The reliability history is not kept on this system "
+            f"(RacTask: {rac_state}). This is not a finding but a gap."
         )
     elif status == SourceStatus.EMPTY:
-        note = "Zuverlaessigkeitsverlauf aktiv, im Zeitfenster ohne Eintraege."
+        note = "Reliability history active, no entries in the time window."
 
     if timed_out:
         status = SourceStatus.TIMED_OUT
     elif not parsed.completed:
-        # Ohne Statuszeile ist das Skript nicht durchgelaufen; null Records
-        # waeren sonst faelschlich "keine Treffer".
+        # Without a status line the script did not finish; zero records would
+        # otherwise wrongly read as "no hits".
         status = SourceStatus.FAILED
-        note = "Das Erhebungsskript hat keinen Abschlussstatus geliefert."
+        note = "The collection script returned no final status."
 
     stamps = [record.timestamp_utc for record in parsed.records]
     return SourceResult(

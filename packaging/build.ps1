@@ -1,12 +1,12 @@
 <#
-    build.ps1 - baut die Auslieferung und gibt deren SHA-256 aus.
+    build.ps1 - builds the release and prints its SHA-256.
 
-    Ohne Code-Signing-Zertifikat bleibt SmartScreen ein Aergernis. Der Weg
-    drumherum ist nicht ein OV-Zertifikat (das baut Reputation erst ueber
-    Download-Zahlen auf und hilft intern kaum), sondern: Verteilung ueber
-    internen Share oder Softwareverteilung, mit dokumentierter Pruefsumme.
-    Genau die gibt dieses Skript am Ende aus - damit sie nicht von Hand
-    entsteht.
+    Without a code-signing certificate SmartScreen remains a nuisance. The way
+    around it is not an OV certificate (it only builds reputation through
+    download numbers and hardly helps internally) but: distribution via an
+    internal share or software distribution, with a documented checksum.
+    That is exactly what this script prints at the end - so that it is not
+    produced by hand.
 #>
 [CmdletBinding()]
 param(
@@ -18,37 +18,37 @@ $root = Split-Path -Parent $PSScriptRoot
 Push-Location $root
 
 try {
-    Write-Host 'Pruefe Umgebung ...' -ForegroundColor Cyan
+    Write-Host 'Checking environment ...' -ForegroundColor Cyan
     python -c "import PyInstaller" 2>$null
-    if ($LASTEXITCODE -ne 0) { throw 'PyInstaller fehlt. pip install pyinstaller' }
+    if ($LASTEXITCODE -ne 0) { throw 'PyInstaller is missing. pip install pyinstaller' }
 
     Write-Host 'Tests ...' -ForegroundColor Cyan
     python -m pytest -q
-    if ($LASTEXITCODE -ne 0) { throw 'Tests fehlgeschlagen. Kein Build.' }
+    if ($LASTEXITCODE -ne 0) { throw 'Tests failed. No build.' }
 
     Write-Host 'Linter ...' -ForegroundColor Cyan
     python -m ruff check .
-    if ($LASTEXITCODE -ne 0) { throw 'Linter fehlgeschlagen. Kein Build.' }
+    if ($LASTEXITCODE -ne 0) { throw 'Linter failed. No build.' }
 
-    Write-Host 'Baue one-dir ...' -ForegroundColor Cyan
+    Write-Host 'Building one-dir ...' -ForegroundColor Cyan
     Remove-Item -Recurse -Force build, $OutDir -ErrorAction SilentlyContinue
     pyinstaller (Join-Path $PSScriptRoot 'wineventai.spec') --noconfirm --distpath $OutDir
-    if ($LASTEXITCODE -ne 0) { throw 'PyInstaller fehlgeschlagen.' }
+    if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed.' }
 
     $version = (python -c "import sys; sys.path.insert(0,'src'); import wineventai; print(wineventai.__version__)").Trim()
     $archive = Join-Path $OutDir "wineventai-$version-win64.zip"
-    Write-Host "Packe $archive ..." -ForegroundColor Cyan
+    Write-Host "Packing $archive ..." -ForegroundColor Cyan
     Compress-Archive -Path (Join-Path $OutDir 'wineventai\*') -DestinationPath $archive -Force
 
     $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLower()
     Write-Host ''
-    Write-Host 'Auslieferung fertig.' -ForegroundColor Green
-    Write-Host "  Datei  : $archive"
+    Write-Host 'Release ready.' -ForegroundColor Green
+    Write-Host "  File   : $archive"
     Write-Host "  SHA-256: $hash"
     Write-Host ''
-    Write-Host 'Diese Pruefsumme mit der Auslieferung dokumentieren.' -ForegroundColor Yellow
-    Write-Host 'Nicht per Download verteilen, sondern ueber internen Share oder' -ForegroundColor Yellow
-    Write-Host 'Softwareverteilung - SmartScreen kennt die unsignierte EXE nicht.' -ForegroundColor Yellow
+    Write-Host 'Document this checksum together with the release.' -ForegroundColor Yellow
+    Write-Host 'Do not distribute by download but via internal share or' -ForegroundColor Yellow
+    Write-Host 'software distribution - SmartScreen does not know the unsigned EXE.' -ForegroundColor Yellow
 }
 finally {
     Pop-Location

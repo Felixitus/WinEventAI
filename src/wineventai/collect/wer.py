@@ -1,8 +1,8 @@
-"""Windows Error Reporting - nur die Metadaten aus Report.wer.
+"""Windows Error Reporting - only the metadata from Report.wer.
 
-Bewusst kein Zugriff auf die Anhaenge: Speicherabbilder und Heap-Auszuege in
-einem WER-Archiv enthalten beliebige Prozessinhalte. Gelesen wird nur die
-INI-artige Kopfsektion.
+Deliberately no access to the attachments: memory dumps and heap extracts in a
+WER archive contain arbitrary process content. Only the INI-like header section
+is read.
 """
 
 from __future__ import annotations
@@ -35,9 +35,9 @@ _INTERESTING = (
 
 
 def parse_report_wer(text: str) -> dict[str, str]:
-    """Liest die ``Schluessel=Wert``-Zeilen einer Report.wer.
+    """Reads the ``key=value`` lines of a Report.wer.
 
-    Report.wer ist UTF-16 mit BOM; das Dekodieren erledigt der Aufrufer.
+    Report.wer is UTF-16 with BOM; the caller does the decoding.
     """
     fields: dict[str, str] = {}
     for line in text.splitlines():
@@ -65,11 +65,11 @@ def _read_text(path: Path) -> str | None:
 def record_from_report(
     path: Path, fields: dict[str, str], window_from: datetime
 ) -> EventRecord | None:
-    """Baut aus einer Report.wer einen ``EventRecord``.
+    """Builds an ``EventRecord`` from a Report.wer.
 
-    Der Zeitstempel kommt aus der Dateizeit, weil Report.wer selbst kein
-    verlaessliches Feld dafuer fuehrt. Das ist eine Naeherung und wird als
-    solche im Meldungstext kenntlich gemacht.
+    The timestamp comes from the file time, because Report.wer itself has no
+    reliable field for it. That is an approximation and is marked as such in
+    the message text.
     """
     try:
         stamp = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
@@ -78,12 +78,12 @@ def record_from_report(
     if stamp < window_from:
         return None
 
-    app = fields.get("AppName") or fields.get("ApplicationName") or "unbekannt"
+    app = fields.get("AppName") or fields.get("ApplicationName") or "unknown"
     event_type = fields.get("EventType") or "WER"
     parts = [f"{key}={fields[key]}" for key in _INTERESTING if key in fields]
     message = (
-        f"Windows Error Reporting: {event_type} fuer {app}. "
-        f"Zeit aus Dateizeitstempel von {path.name}. " + " | ".join(parts)
+        f"Windows Error Reporting: {event_type} for {app}. "
+        f"Time taken from the file timestamp of {path.name}. " + " | ".join(parts)
     )
 
     return EventRecord(
@@ -137,7 +137,7 @@ class WerCollector:
                     status=SourceStatus.NOT_AVAILABLE,
                     requested_from_utc=self.window_from,
                     requested_to_utc=self.window_to,
-                    note="WER-Archivverzeichnis nicht gefunden.",
+                    note="WER archive directory not found.",
                 )
             )
 
