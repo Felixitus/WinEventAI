@@ -5,6 +5,11 @@ Die PyInstaller-Spezifikation baut ``wineventai.exe`` (Konsole) und
 sich dieselben Bibliotheken teilen. Beide starten deshalb dieses Skript; welche
 Oberflaeche gemeint ist, entscheidet der Name der gestarteten Datei. Ohne diese
 Weiche oeffnete die GUI-Datei die Kommandozeile - ohne Konsole, also unsichtbar.
+
+Absolute Importe, keine relativen: PyInstaller fuehrt diese Datei als Skript
+aus, nicht als Modul eines Pakets. ``from .cli import cli`` scheitert dort mit
+"attempted relative import with no known parent package" - die EXE startete
+deshalb gar nicht.
 """
 
 from __future__ import annotations
@@ -22,11 +27,11 @@ def wants_gui(executable: str, frozen: bool) -> bool:
 
 def main() -> None:
     if wants_gui(sys.executable, bool(getattr(sys, "frozen", False))):
-        from .gui.app import main as gui_main
+        from wineventai.gui.app import main as gui_main
 
         raise SystemExit(gui_main())
 
-    from .cli import cli
+    from wineventai.cli import cli
 
     cli()
 

@@ -729,7 +729,7 @@ def _print_summary(report_model: object, run: RunDirectory) -> None:
         }.get(str(finding.severity))
         typer.secho(
             f"  [{finding.severity:<8}] {finding.rule_name} "
-            f"({finding.group.count}× {finding.group.provider}:{finding.group.event_id})",
+            f"({finding.group.count}x {finding.group.provider}:{finding.group.event_id})",
             fg=colour,
         )
 

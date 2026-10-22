@@ -125,3 +125,26 @@ def test_vergessener_elternschluessel_bricht_sichtbar_ab() -> None:
     with pytest.raises(ValidationError) as excinfo:
         load_config()
     assert "days" in str(excinfo.value)
+
+
+def test_einstiegspunkt_kommt_ohne_relative_importe_aus() -> None:
+    """PyInstaller startet __main__.py als Skript ohne Paket - relative Importe scheitern dort."""
+    import ast
+    from pathlib import Path
+
+    import wineventai
+
+    source = (Path(wineventai.__file__).parent / "__main__.py").read_text(encoding="utf-8")
+    relative = [
+        node for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.ImportFrom) and node.level > 0
+    ]
+    assert relative == []
+
+
+def test_nur_die_gui_exe_startet_die_oberflaeche() -> None:
+    from wineventai.__main__ import wants_gui
+
+    assert wants_gui(r"C:\Programme\wineventai\wineventai-gui.exe", frozen=True)
+    assert not wants_gui(r"C:\Programme\wineventai\wineventai.exe", frozen=True)
+    assert not wants_gui(r"C:\Python\python.exe", frozen=False)

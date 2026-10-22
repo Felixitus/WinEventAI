@@ -1,6 +1,6 @@
 # WinEventAI — Uebergabestand
 
-**Version 1.3.0 · 241 Tests gruen · ruff sauber · Stand 13.09.2026**
+**Version 1.3.0 · 243 Tests gruen · ruff sauber · Stand 13.09.2026**
 
 Diese Datei ist der vollstaendige Wissensstand fuer eine Weiterentwicklung
 ausserhalb der urspruenglichen Sitzung. Der Arbeitsvertrag steht in
@@ -11,7 +11,7 @@ ausserhalb der urspruenglichen Sitzung. Der Arbeitsvertrag steht in
 ## 1. Umfang
 
 ~11.360 Zeilen Python in 73 Modulen, 8 PowerShell-Skripte, 30 Regeln in
-6 YAML-Dateien, 241 Tests in 15 Dateien.
+6 YAML-Dateien, 243 Tests in 15 Dateien.
 
 | Paket | Zeilen | Aufgabe |
 |---|---:|---|
@@ -268,6 +268,7 @@ Zuordnungstabelle wird nicht mit exportiert.
 | 1.3.0 | `doctor` meldete vorhandene Kanaele als "FEHLT": `-ListLog * -ErrorAction Stop` brach ohne Adminrechte beim ersten nicht lesbaren Kanal ab | `list_channels.ps1` prueft jeden konfigurierten Namen einzeln und trennt fehlend / nicht lesbar |
 | 1.3.0 | Status-Chips in der Abdeckungstabelle doppelt beschriftet | `QStyledItemDelegate.paint` fuellt den Text intern neu; Hintergrund wird jetzt direkt ueber `drawControl` gezeichnet |
 | 1.3.0 | Hinweise je Quelle standen nur im Tooltip | eigene Spalte "Hinweis" |
+| 1.3.0 | Die gebaute EXE startete nicht: `__main__.py` importierte relativ (`from .cli import cli`), PyInstaller fuehrt die Datei aber als Skript ohne Paket aus. Die GUI-EXE haette zudem die Kommandozeile gestartet | absolute Importe, Weiche nach EXE-Name (`wants_gui`); beide EXE auf Windows 11 gestartet und geprueft |
 
 ## 9. Offene Punkte
 

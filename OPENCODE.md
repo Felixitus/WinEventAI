@@ -7,7 +7,7 @@ unzip wineventai-1.2.0-handover.zip
 cd winevent-ai
 python -m venv .venv && . .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-python -m pytest -q        # muss 241 passed melden
+python -m pytest -q        # muss 243 passed melden
 ruff check src/ tests/     # muss sauber sein
 opencode
 ```

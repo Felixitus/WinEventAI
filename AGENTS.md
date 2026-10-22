@@ -66,7 +66,7 @@ Machine Learning ausser dem Sprachmodell.
 ```bash
 pip install -e ".[dev]"      # Entwicklung (PySide6 inklusive)
 pip install -e ".[gui]"      # nur Oberflaeche
-python -m pytest -q          # 241 Tests, muessen alle gruen sein
+python -m pytest -q          # 243 Tests, muessen alle gruen sein
 ruff check src/ tests/       # muss sauber sein
 ```
 
