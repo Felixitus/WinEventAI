@@ -1,0 +1,81 @@
+# Anwendungsebene.
+#
+# 1000 ist die meistgenannte und am haeufigsten falsch zugeordnete Event-ID
+# ueberhaupt: Sie existiert unter vielen Providern. Deshalb hier ausdruecklich
+# der Provider "Application Error" und der Kanal Application.
+
+- id: application-error-1000
+  name: Anwendungsabsturz (Application Error 1000)
+  match:
+    channel: Application
+    provider: Application Error
+    event_id: 1000
+  severity: fehler
+  bedeutung: >
+    Eine Anwendung wurde durch eine unbehandelte Ausnahme beendet. Die
+    Ereignisdaten nennen Programmname, Version, fehlerhaftes Modul und
+    Ausnahmecode.
+  typische_ursachen:
+    - Fehler in der Anwendung selbst oder in einem geladenen Modul
+    - Beschaedigte Programmdateien
+    - Inkompatible Erweiterung oder Add-in
+    - Defekter Arbeitsspeicher, wenn viele verschiedene Programme betroffen sind
+  empfohlene_checks:
+    - Immer dasselbe fehlerhafte Modul? Dann ist die Ursache dort, nicht im Programm.
+    - "Bei vielen verschiedenen Programmen: Arbeitsspeicher und Datentraeger pruefen."
+    - Zeitliche Naehe zu einem Update oder einer Installation pruefen.
+  threshold:
+    count_min: 1
+    escalate_above: 50
+    escalate_to: kritisch
+
+- id: application-hang-1002
+  name: Anwendung reagiert nicht (Application Hang 1002)
+  match:
+    channel: Application
+    provider: Application Hang
+    event_id: 1002
+  severity: warnung
+  bedeutung: >
+    Eine Anwendung hat ueber laengere Zeit nicht auf Fenstermeldungen reagiert
+    und wurde als haengend gemeldet.
+  typische_ursachen:
+    - Wartezeit auf Netzwerk-, Datei- oder Datenbankzugriff
+    - Blockierende Erweiterung
+    - Ueberlasteter oder ausfallender Datentraeger
+  empfohlene_checks:
+    - Zeitgleiche Datentraegerfehler (disk 51/153) pruefen.
+    - Betrifft es nur Zugriffe auf Netzlaufwerke? Dann Netz statt Anwendung pruefen.
+
+- id: wer-report
+  name: Fehlerbericht vorhanden (Windows Error Reporting)
+  match:
+    channel: WER
+    provider: Windows Error Reporting
+    event_id: 0
+  severity: warnung
+  bedeutung: >
+    Im WER-Archiv liegt ein Fehlerbericht. Ausgewertet werden nur die Metadaten
+    der Report.wer; die Anhaenge werden bewusst nicht angefasst, weil sie
+    beliebige Prozessinhalte enthalten koennen.
+  typische_ursachen:
+    - Absturz einer Anwendung oder eines Dienstes
+    - Stoppfehler des Systems
+  empfohlene_checks:
+    - Zeitstempel mit Application Error 1000 und BugCheck 1001 abgleichen.
+
+- id: minidump-vorhanden
+  name: Speicherabbild vorhanden
+  match:
+    channel: Minidump
+    provider: Minidump
+    event_id: 0
+  severity: warnung
+  bedeutung: >
+    Es liegt ein Minidump vor. Das ist der belastbarste Hinweis darauf, dass ein
+    Stoppfehler tatsaechlich stattgefunden hat.
+  typische_ursachen:
+    - Stoppfehler des Systems
+  empfohlene_checks:
+    - Zeitstempel des Abbilds mit Kernel-Power 41 und BugCheck 1001 abgleichen.
+    - Auswertung des Abbilds ist nicht Teil der Version 1 dieses Werkzeugs.

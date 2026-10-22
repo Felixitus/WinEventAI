@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ report.title }} – {{ report.meta.host }}</title>
+<style>{{ css }}</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <div class="kicker">WinEventAI {{ report.meta.tool_version }}{% if report.redacted %} · pseudonymisierte Fassung{% endif %}</div>
+  <h1>{{ report.title }}</h1>
+  <p class="headline">{{ report.headline }}</p>
+  <dl class="meta">
+    <div><dt>Rechner</dt><dd>{{ report.meta.host }}</dd></div>
+    <div><dt>Betriebssystem</dt><dd>{{ report.meta.os_caption }}</dd></div>
+    <div><dt>Erhoben</dt><dd>{{ report.meta.started_utc | dt }} UTC ({{ report.meta.timezone_name }}, {{ report.meta.utc_offset_minutes }} min)</dd></div>
+    <div><dt>Zeitfenster</dt><dd>{{ report.meta.requested_from_utc | dt }} – {{ report.meta.requested_to_utc | dt }} UTC</dd></div>
+    <div><dt>Ausgefuehrt von</dt><dd>{{ report.meta.account }}{% if not report.meta.is_admin %} (ohne Adminrechte){% endif %}</dd></div>
+    <div><dt>Sprachmodell</dt><dd>{% if report.ai.used %}{{ report.ai.model }}{% else %}nicht verwendet{% endif %}</dd></div>
+  </dl>
+</header>
+
+{% if report.has_coverage_problem %}
+<div class="banner warn">
+  <strong>Der Zeitraum wurde nicht vollstaendig erhoben.</strong>
+  Aussagen ueber nicht abgedeckte Zeitraeume sind nicht moeglich. Die Abdeckungstabelle
+  steht direkt darunter – bitte zuerst lesen.
+</div>
+{% endif %}
+
+<section>
+  <h2>1 · Abdeckung</h2>
+  <p class="lede">Was erhoben wurde und was nicht. „Keine Treffer" heisst kein Befund;
+  alles andere heisst, dass an dieser Stelle nichts ausgesagt werden kann.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr>
+      <th>Quelle</th><th>Status</th><th>Angefordert</th><th>Abgedeckt</th>
+      <th class="num">Gelesen</th><th class="num">Behalten</th>
+    </tr></thead>
+    <tbody>
+    {% for row in report.coverage %}
+      <tr class="{{ 'row-warn' if row.inconclusive else '' }}">
+        <td class="mono">{{ row.source_id }}</td>
+        <td><span class="status status-{{ 'warn' if row.inconclusive else 'ok' }}">{{ row.status }}</span>
+            <div class="sub">{{ row.hint }}{% if row.note %} {{ row.note }}{% endif %}</div></td>
+        <td class="mono sub">{{ row.requested }}</td>
+        <td class="mono sub">{{ row.covered }}{% if row.coverage_gap %} <span class="flag">Luecke</span>{% endif %}</td>
+        <td class="num mono">{{ row.records_read | zahl }}</td>
+        <td class="num mono">{{ row.records_retained | zahl }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <div class="stats">
+    <div><span class="stat-n">{{ report.total_events | zahl }}</span><span class="stat-l">Ereignisse gelesen</span></div>
+    <div><span class="stat-n">{{ report.distinct_groups | zahl }}</span><span class="stat-l">verschiedene Fingerprints</span></div>
+    <div><span class="stat-n">{{ (report.reduction_rate * 100) | round(1) }} %</span><span class="stat-l">Reduktion durch Dedup</span></div>
+    <div><span class="stat-n">{{ report.findings | length }}</span><span class="stat-l">Befunde</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>2 · Befunde</h2>
+  {% if report.severity_counts %}
+  <p class="chips">
+    {% for entry in report.severity_counts %}
+      <span class="chip sev-{{ entry.severity }}">{{ entry.count }} × {{ entry.severity }}</span>
+    {% endfor %}
+  </p>
+  {% endif %}
+
+  {% if not report.findings %}
+    <p class="empty">Keine Regeltreffer im abgedeckten Zeitraum.</p>
+  {% endif %}
+
+  {% for finding in report.findings %}
+  <article class="finding sev-border-{{ finding.severity }}">
+    <div class="finding-head">
+      <span class="chip sev-{{ finding.severity }}">{{ finding.severity }}{% if finding.escalated %} (eskaliert){% endif %}</span>
+      <h3>{{ finding.rule_name }}</h3>
+      <span class="mono muted">{{ finding.group.provider }}:{{ finding.group.event_id }}</span>
+    </div>
+
+    <dl class="kv">
+      <div><dt>Haeufigkeit</dt><dd>{{ finding.group.count | zahl }} ×</dd></div>
+      <div><dt>Zeitraum</dt><dd>{{ finding.group.first_seen_utc | dt }} – {{ finding.group.last_seen_utc | dt }} UTC</dd></div>
+      <div><dt>Kanal</dt><dd class="mono">{{ finding.group.channel }}</dd></div>
+      <div><dt>Regel</dt><dd class="mono">{{ finding.rule_id }} <span class="muted">({{ finding.rule_source }})</span></dd></div>
+    </dl>
+
+    {% if finding.group.bursts %}
+    <p class="burst">Auffaellige Haeufung:
+      {% for burst in finding.group.bursts[:3] %}{{ burst.hour_utc | stunde }} ({{ burst.count }}×){% if not loop.last %}, {% endif %}{% endfor %}
+    </p>
+    {% endif %}
+
+    {% if finding.bedeutung %}<p>{{ finding.bedeutung }}</p>{% endif %}
+
+    {% if not finding.has_verified_meaning %}
+    <p class="note">Keine gesicherte Bedeutung in der Wissensbasis hinterlegt
+      (Status: {{ finding.kb_confidence }}). Aussagen zu diesem Befund sind ungeprueft.</p>
+    {% endif %}
+
+    <div class="cols">
+      {% if finding.typische_ursachen %}
+      <div><h4>Typische Ursachen</h4><ul>{% for item in finding.typische_ursachen %}<li>{{ item }}</li>{% endfor %}</ul></div>
+      {% endif %}
+      {% if finding.empfohlene_checks %}
+      <div><h4>Empfohlene Pruefschritte</h4><ul>{% for item in finding.empfohlene_checks %}<li>{{ item }}</li>{% endfor %}</ul></div>
+      {% endif %}
+    </div>
+
+    {% if finding.probes %}
+    <div class="probes">
+      <h4>Messungen zum aktuellen Zustand</h4>
+      {% for probe in finding.probes %}
+      <div class="probe probe-{{ 'ok' if probe.status.value == 'unauffaellig' else ('warn' if probe.status.value == 'auffaellig' else 'none') }}">
+        <p class="probe-head">
+          <span class="probe-status">{{ probe.status }}</span>
+          <span class="probe-title">{{ probe.title }}</span>
+          {% if probe.target %}<span class="mono sub">{{ probe.target }}</span>{% endif %}
+          <span class="probe-bearing">{{ probe.bearing }}</span>
+        </p>
+        {% if probe.summary %}<p>{{ probe.summary }}</p>{% endif %}
+        {% if probe.details %}
+        <ul class="probe-details">{% for line in probe.details %}<li>{{ line }}</li>{% endfor %}</ul>
+        {% endif %}
+        <p class="probe-age">{{ probe.age_note() }}</p>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% set ai = report.ai.for_finding(finding.finding_id) %}
+    {% if ai and ai.explanation %}
+    <div class="ai">
+      <h4>Einschaetzung des Sprachmodells</h4>
+      <p>{{ ai.explanation.zusammenfassung }}</p>
+      {% for statement in ai.explanation.hypothesen %}
+      <div class="statement {{ 'unverified' if not statement.verified else '' }}">
+        <p>{{ statement.aussage }}</p>
+        <p class="ev">
+          <span class="conf conf-{{ statement.confidence }}">{{ statement.confidence }}</span>
+          {% for evidence in statement.evidence %}<span class="mono">{{ evidence.provider }}:{{ evidence.event_id }} @ {{ evidence.timestamp_utc | dt }}</span>{% if not loop.last %} · {% endif %}{% endfor %}
+        </p>
+        {% if not statement.verified %}<p class="rejected">Verworfen: {{ statement.verification_note }}</p>{% endif %}
+      </div>
+      {% endfor %}
+      {% if ai.explanation.empfohlene_schritte %}
+      <h4>Vorgeschlagene naechste Schritte</h4>
+      {% for statement in ai.explanation.empfohlene_schritte %}
+      <div class="statement {{ 'unverified' if not statement.verified else '' }}">
+        <p>{{ statement.aussage }}</p>
+        <p class="ev"><span class="conf conf-{{ statement.confidence }}">{{ statement.confidence }}</span></p>
+        {% if not statement.verified %}<p class="rejected">Verworfen: {{ statement.verification_note }}</p>{% endif %}
+      </div>
+      {% endfor %}
+      {% endif %}
+    </div>
+    {% elif ai and ai.note %}
+    <p class="note">Sprachmodell: {{ ai.note }}</p>
+    {% endif %}
+
+    {% if finding.context_events %}
+    <details>
+      <summary>{{ finding.context_events | length }} Ereignisse im Umfeld</summary>
+      <div class="tablewrap"><table class="dense">
+        <thead><tr><th>Zeit (UTC)</th><th>Provider</th><th class="num">ID</th><th>Meldung</th></tr></thead>
+        <tbody>
+        {% for event in finding.context_events[:40] %}
+          <tr><td class="mono">{{ event.timestamp_utc | dt }}</td>
+              <td class="mono">{{ event.provider }}</td>
+              <td class="num mono">{{ event.event_id }}</td>
+              <td class="sub">{{ event.excerpt(160) }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+    </details>
+    {% endif %}
+
+    {% if finding.referenz %}<p class="ref"><a href="{{ finding.referenz }}">Referenz</a></p>{% endif %}
+  </article>
+  {% endfor %}
+</section>
+
+<section>
+  <h2>3 · Zeitleiste</h2>
+  {{ timeline | safe }}
+  {% if report.boot_sessions %}
+  <div class="tablewrap"><table class="dense">
+    <thead><tr><th>Sitzung</th><th>Beginn (UTC)</th><th>Ende (UTC)</th><th>Herunterfahren</th><th class="num">Ereignisse</th></tr></thead>
+    <tbody>
+    {% for session in report.boot_sessions %}
+      <tr><td>{{ session.label }}</td>
+          <td class="mono">{{ session.start_utc | dt }}</td>
+          <td class="mono">{{ session.end_utc | dt }}</td>
+          <td>{% if session.clean_shutdown is none %}<span class="muted">unbekannt (Uebergang nicht im Zeitfenster)</span>{% elif session.clean_shutdown %}sauber{% else %}<span class="bad">unsauber</span>{% endif %}</td>
+          <td class="num mono">{{ session.event_count | zahl }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+</section>
+
+{% if report.ai.correlation and report.ai.correlation.vorfaelle %}
+<section>
+  <h2>4 · Zusammenhaenge</h2>
+  <p class="lede">Vorschlag des Modells, welche Befunde zum selben Vorfall gehoeren.
+  Zeitliche Naehe allein ist kein Zusammenhang – die Begruendung ist der Teil, den man pruefen muss.</p>
+  {% for vorfall in report.ai.correlation.vorfaelle %}
+  <article class="incident {{ 'unverified' if not vorfall.verified else '' }}">
+    <h3>{{ vorfall.titel }} <span class="conf conf-{{ vorfall.confidence }}">{{ vorfall.confidence }}</span></h3>
+    <p>{{ vorfall.begruendung }}</p>
+    <p class="mono sub">{{ vorfall.befund_ids | join(' · ') }}</p>
+    {% if not vorfall.verified %}<p class="rejected">Verworfen: {{ vorfall.verification_note }}</p>{% endif %}
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if report.security.enabled %}
+<section>
+  <h2>5 · Sicherheitsmodus</h2>
+  <div class="banner info"><strong>{{ report.security.disclaimer }}</strong></div>
+
+  {% if report.security.not_logged %}
+  <h3>Blinde Flecken</h3>
+  <p class="lede">Diese Indikatoren entstehen auf diesem System gar nicht. Ihr Fehlen ist
+  <em>nicht</em> als Unauffaelligkeit zu lesen.</p>
+  {% for entry in report.security.not_logged %}
+  <div class="blindspot">
+    <p><span class="mono">{{ entry.event_ids | join(', ') }}</span> – {{ entry.subcategory }}: <strong>{{ entry.state }}</strong></p>
+    <p class="sub">{{ entry.hint }}</p>
+    {% if entry.vorschlag %}
+    <details><summary>Vorschlag zum Aktivieren (wird nicht ausgefuehrt)</summary>
+      <dl class="kv">
+        <div><dt>Befehl</dt><dd class="mono">{{ entry.vorschlag.befehl }}</dd></div>
+        <div><dt>Erwartete Wirkung</dt><dd>{{ entry.vorschlag.wirkung }}</dd></div>
+        <div><dt>Risiko</dt><dd>{{ entry.vorschlag.risiko }}</dd></div>
+        <div><dt>Rueckbau</dt><dd class="mono">{{ entry.vorschlag.rueckbau }}</dd></div>
+      </dl>
+    </details>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if report.security.gaps %}
+  <h3>Luecken in der Zeitachse</h3>
+  <ul>{% for gap in report.security.gaps[:10] %}<li>{{ gap.description }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  {% if report.security.findings %}
+  <h3>Indikatoren mit Treffer</h3>
+  <ul>{% for finding in report.security.findings %}
+    <li><span class="chip sev-{{ finding.severity }}">{{ finding.severity }}</span>
+        {{ finding.rule_name }} – {{ finding.group.count | zahl }} × zwischen
+        {{ finding.group.first_seen_utc | dt }} und {{ finding.group.last_seen_utc | dt }} UTC</li>
+  {% endfor %}</ul>
+  {% else %}
+  <p class="empty">Keine Treffer bei den ausgewerteten Indikatoren
+    {% if report.security.has_blind_spots %}– bei den oben genannten blinden Flecken{% endif %}.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section>
+  <h2>{{ 6 if report.security.enabled else 5 }} · Unterdruecktes Rauschen</h2>
+  {% if report.noise %}
+  <p class="lede">Diese Befunde stehen auf praktisch jedem System und sind standardmaessig
+  ausgeblendet. Ohne diese Klassifikation waere der Bericht unbrauchbar.</p>
+  <div class="tablewrap"><table class="dense">
+    <thead><tr><th>Regel</th><th>Provider</th><th class="num">ID</th><th class="num">Anzahl</th></tr></thead>
+    <tbody>
+    {% for finding in report.noise %}
+      <tr><td>{{ finding.rule_name }}</td><td class="mono">{{ finding.group.provider }}</td>
+          <td class="num mono">{{ finding.group.event_id }}</td>
+          <td class="num mono">{{ finding.group.count | zahl }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <p class="empty">Nichts als Rauschen klassifiziert.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>{{ 7 if report.security.enabled else 6 }} · Rohdaten-Anhang</h2>
+  <p class="lede">Auszug der behaltenen Rohdaten ({{ report.raw_appendix | length }} von
+    {{ report.retention_stats.get('regeltreffer', 0) + report.retention_stats.get('kontext', 0) + report.retention_stats.get('fehlerstufe', 0) + report.retention_stats.get('stichprobe', 0) }}).
+    {% if report.retention_stats.get('verworfen', 0) %}
+    {{ report.retention_stats['verworfen'] | zahl }} Records wurden nicht behalten – die Kennzahlen oben sind davon unberuehrt.
+    {% endif %}
+  </p>
+  <div class="tablewrap"><table class="dense">
+    <thead><tr><th>Zeit (UTC)</th><th>Kanal</th><th>Provider</th><th class="num">ID</th><th>Stufe</th><th>Meldung</th></tr></thead>
+    <tbody>
+    {% for event in report.raw_appendix %}
+      <tr><td class="mono">{{ event.timestamp_utc | dt }}</td>
+          <td class="mono">{{ event.channel }}</td>
+          <td class="mono">{{ event.provider }}</td>
+          <td class="num mono">{{ event.event_id }}</td>
+          <td>{{ event.level_label }}</td>
+          <td class="sub">{{ event.excerpt(200) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+<footer class="doc">
+  <p>{{ report.ai_note }}</p>
+  <p class="sub">Erzeugt {{ report.generated_utc | dt }} UTC · WinEventAI {{ report.meta.tool_version }} ·
+     Lauf {{ report.meta.run_id }} · read-only, es wurde nichts am System geaendert.</p>
+  {% if report.unknown_ids %}
+  <p class="sub">{{ report.unknown_ids | length }} Provider/ID-Paare ohne gesicherten
+     Wissensbasis-Eintrag – siehe unknown_ids.csv im Laufverzeichnis.</p>
+  {% endif %}
+</footer>
+
+</div>
+</body>
+</html>

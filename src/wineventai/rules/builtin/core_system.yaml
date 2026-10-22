@@ -1,0 +1,133 @@
+# Kernbefunde aus dem System-Kanal.
+#
+# Achtung auf die Provider-Angaben: Kernel-Power 41 liegt im System-Kanal,
+# nicht im Kanal Microsoft-Windows-Kernel-Power/Operational. Und 1001 ist
+# BugCheck NUR unter dem Provider WER-SystemErrorReporting - dieselbe ID
+# existiert im Application-Kanal als Windows Error Reporting.
+
+- id: kernel-power-41
+  name: Unsauberer Neustart (Kernel-Power 41)
+  match:
+    channel: System
+    provider: Microsoft-Windows-Kernel-Power
+    event_id: 41
+  severity: kritisch
+  bedeutung: >
+    Das System wurde neu gestartet, ohne dass zuvor ein regulaeres Herunterfahren
+    protokolliert wurde. Windows stellt das beim naechsten Start nachtraeglich fest.
+  typische_ursachen:
+    - Stromausfall oder instabile Spannungsversorgung
+    - Bluescreen, bei dem die Protokollierung nicht mehr abgeschlossen wurde
+    - Ueberhitzung mit Abschaltung durch die Firmware
+    - Netzteil oder Mainboard defekt
+  empfohlene_checks:
+    - Liegt zeitnah ein BugCheck 1001 mit Stopcode vor?
+    - Existiert ein Minidump mit passendem Zeitstempel?
+    - WHEA-Logger 17 oder 19 im selben Zeitraum?
+    - "Bei mehreren Rechnern am selben Ort: gemeinsame Stromversorgung pruefen."
+  referenz: "https://learn.microsoft.com/windows/client-management/troubleshoot-event-id-41-restart"
+  threshold:
+    count_min: 1
+    escalate_above: 3
+    escalate_to: kritisch
+
+- id: eventlog-6008
+  name: Unerwartetes Herunterfahren (EventLog 6008)
+  match:
+    channel: System
+    provider: EventLog
+    event_id: 6008
+  severity: kritisch
+  bedeutung: >
+    Das vorige Herunterfahren war unerwartet. Der Eintrag entsteht beim Hochfahren
+    und beschreibt damit die VORHERIGE Sitzung, nicht die laufende.
+  typische_ursachen:
+    - Harter Ausschalter oder Stromverlust
+    - Absturz ohne abgeschlossene Protokollierung
+    - Erzwungener Neustart durch Watchdog oder Virtualisierungsschicht
+  empfohlene_checks:
+    - Zeitpunkt mit Kernel-Power 41 abgleichen - beide beschreiben denselben Vorfall.
+    - "Bei virtuellen Maschinen: Host-Protokolle pruefen, nicht nur den Gast."
+  referenz: "https://learn.microsoft.com/windows/client-management/troubleshoot-event-id-41-restart"
+
+- id: bugcheck-1001
+  name: Bluescreen (BugCheck 1001)
+  match:
+    channel: System
+    provider: Microsoft-Windows-WER-SystemErrorReporting
+    event_id: 1001
+  severity: kritisch
+  bedeutung: >
+    Das System hat einen Stoppfehler ausgeloest. Der Stopcode und die Parameter
+    stehen in den Ereignisdaten und benennen die betroffene Komponente.
+  typische_ursachen:
+    - Fehlerhafter oder unpassender Treiber
+    - Defekter Arbeitsspeicher
+    - Dateisystem- oder Datentraegerfehler
+    - Uebertaktung oder instabile Spannungsversorgung
+  empfohlene_checks:
+    - Stopcode aus den Ereignisdaten notieren und zuordnen.
+    - Passenden Minidump suchen und - ausserhalb dieses Werkzeugs - auswerten.
+    - Zuletzt geaenderte Treiber pruefen (Kernel-PnP 219, Windows Update).
+    - Arbeitsspeichertest, wenn kein Treiber auffaellt.
+  referenz: "https://learn.microsoft.com/windows-hardware/drivers/debugger/bug-check-code-reference2"
+
+- id: scm-dienst-beendet
+  name: Dienst unerwartet beendet (SCM 7031/7034)
+  match:
+    channel: System
+    provider: Service Control Manager
+    event_id: [7031, 7034]
+  severity: fehler
+  bedeutung: >
+    Ein Dienst wurde beendet, ohne sich ordnungsgemaess abzumelden. 7031 nennt
+    zusaetzlich die vom Dienst-Manager eingeleitete Wiederherstellungsaktion.
+  typische_ursachen:
+    - Absturz des Dienstprozesses
+    - Abhaengigkeit nicht verfuegbar (Netzwerk, Datenbank, Datentraeger)
+    - Speichermangel
+    - Beendigung durch Sicherheitssoftware
+  empfohlene_checks:
+    - Zeitgleiche Application-Error-Eintraege (1000) zum selben Prozess suchen.
+    - Wiederholt sich der Vorfall im selben Stundenraster? Dann Zeitplan pruefen.
+    - Dienstkonto und dessen Berechtigungen pruefen.
+  threshold:
+    count_min: 1
+    escalate_above: 20
+    escalate_to: kritisch
+
+- id: scm-dienst-startet-nicht
+  name: Dienst startet nicht (SCM 7000/7009)
+  match:
+    channel: System
+    provider: Service Control Manager
+    event_id: [7000, 7009]
+  severity: fehler
+  bedeutung: >
+    Ein Dienst liess sich nicht starten (7000) oder hat die Verbindungsfrist
+    beim Start ueberschritten (7009).
+  typische_ursachen:
+    - Fehlende oder beschaedigte Programmdatei
+    - Falsches oder gesperrtes Dienstkonto
+    - Abhaengiger Dienst nicht gestartet
+    - Zeitueberschreitung auf langsamer Hardware oder bei hoher Last beim Start
+  empfohlene_checks:
+    - Pfad zur Programmdatei und deren Vorhandensein pruefen.
+    - Abhaengigkeiten des Dienstes ansehen.
+    - Bei 7009 pruefen, ob der Start nur unter Last scheitert.
+
+- id: eventlog-boot-marker
+  name: Boot-Session-Marker (EventLog 6005/6006)
+  match:
+    channel: System
+    provider: EventLog
+    event_id: [6005, 6006]
+  severity: info
+  bedeutung: >
+    Start und Stopp des Ereignisprotokolldienstes. Diese beiden Ereignisse
+    begrenzen eine Boot-Sitzung und sind die Grundlage der Zeitleiste.
+  typische_ursachen:
+    - Regulaerer Start bzw. regulaeres Herunterfahren
+  empfohlene_checks:
+    - Fehlt zu einem 6005 das vorangehende 6006, war das Herunterfahren unsauber.
+  classification: befund

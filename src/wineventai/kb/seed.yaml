@@ -1,0 +1,372 @@
+# Mitgelieferte Wissensbasis.
+#
+# Bewusst klein und geprueft statt gross und halbgar. Der Schluessel ist immer
+# provider + event_id.
+#
+# confidence:
+#   sicher   - Bedeutung belastbar; wird in den Prompt eingebettet.
+#   unsicher - Bedeutung plausibel, aber nicht verifiziert; NICHT in den Prompt,
+#              der Bericht kennzeichnet den Befund als ungeprueft.
+#   leer     - keine Bedeutung hinterlegt.
+#
+# Die Texte sind eigene Formulierungen. Quellen werden verlinkt statt kopiert -
+# das loest Urheberrecht und Nachvollziehbarkeit in einem Zug, und der eigentliche
+# Wert steht ohnehin in "typische_ursachen" und "checks", nicht in der Doku.
+
+- provider: Microsoft-Windows-Kernel-Power
+  event_id: 41
+  bedeutung: >
+    Beim Hochfahren stellt Windows fest, dass das System zuvor nicht ordnungsgemaess
+    heruntergefahren wurde. Der Eintrag beschreibt damit rueckblickend das Ende der
+    vorherigen Sitzung.
+  typische_ursachen:
+    - Stromverlust
+    - Stoppfehler ohne abgeschlossene Protokollierung
+    - Abschaltung durch Ueberhitzungsschutz
+  checks:
+    - Zeitnahen BugCheck 1001 suchen
+    - Minidump-Zeitstempel abgleichen
+    - WHEA-Logger-Ereignisse im selben Zeitraum pruefen
+  severity_default: kritisch
+  quelle_url: "https://learn.microsoft.com/windows/client-management/troubleshoot-event-id-41-restart"
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: EventLog
+  event_id: 6008
+  bedeutung: >
+    Das vorherige Herunterfahren des Systems war unerwartet. Wird beim naechsten
+    Start geschrieben und nennt den Zeitpunkt des letzten bekannten Betriebs.
+  typische_ursachen:
+    - Stromverlust
+    - Harter Ausschalter
+    - Absturz
+  checks:
+    - Mit Kernel-Power 41 abgleichen
+    - Bei virtuellen Maschinen die Host-Protokolle heranziehen
+  severity_default: kritisch
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: EventLog
+  event_id: 6005
+  bedeutung: Der Ereignisprotokolldienst wurde gestartet. Markiert den Beginn einer Boot-Sitzung.
+  typische_ursachen: [Systemstart]
+  checks: [Fehlt davor ein 6006, war das Herunterfahren unsauber]
+  severity_default: info
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: EventLog
+  event_id: 6006
+  bedeutung: Der Ereignisprotokolldienst wurde gestoppt. Markiert ein regulaeres Herunterfahren.
+  typische_ursachen: [Regulaeres Herunterfahren oder Neustart]
+  checks: [Als Gegenstueck zu 6005 fuer die Zeitleiste verwenden]
+  severity_default: info
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Microsoft-Windows-WER-SystemErrorReporting
+  event_id: 1001
+  bedeutung: >
+    Zusammenfassung eines Stoppfehlers nach dem Neustart. Enthaelt Stopcode und
+    Parameter sowie den Pfad des erzeugten Speicherabbilds.
+  typische_ursachen:
+    - Treiberfehler
+    - Defekter Arbeitsspeicher
+    - Fehler im Speicherpfad
+  checks:
+    - Stopcode bestimmen und zuordnen
+    - Zuletzt geaenderte Treiber pruefen
+    - Speicherabbild ausserhalb dieses Werkzeugs auswerten
+  severity_default: kritisch
+  quelle_url: "https://learn.microsoft.com/windows-hardware/drivers/debugger/bug-check-code-reference2"
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Service Control Manager
+  event_id: 7031
+  bedeutung: >
+    Ein Dienst wurde unerwartet beendet. Der Eintrag nennt, wie oft das bereits
+    geschah und welche Wiederherstellungsaktion eingeleitet wurde.
+  typische_ursachen:
+    - Absturz des Dienstprozesses
+    - Fehlende Abhaengigkeit
+    - Speichermangel
+  checks:
+    - Zeitgleiche Application-Error-Eintraege zum selben Prozess suchen
+    - Wiederholungsmuster ueber die Zeit ansehen
+  severity_default: fehler
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Service Control Manager
+  event_id: 7034
+  bedeutung: Ein Dienst wurde unerwartet beendet, ohne dass eine Wiederherstellung greift.
+  typische_ursachen: [Absturz des Dienstprozesses, Beendigung durch Sicherheitssoftware]
+  checks: [Dienstkonto pruefen, Protokolle der Anwendung selbst heranziehen]
+  severity_default: fehler
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Service Control Manager
+  event_id: 7000
+  bedeutung: Ein Dienst konnte nicht gestartet werden.
+  typische_ursachen: [Fehlende Programmdatei, Falsches oder gesperrtes Dienstkonto]
+  checks: [Pfad der Programmdatei pruefen, Abhaengigkeiten pruefen]
+  severity_default: fehler
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Service Control Manager
+  event_id: 7009
+  bedeutung: >
+    Ein Dienst hat die Frist zur Verbindungsaufnahme beim Start ueberschritten.
+    Der Standardwert liegt bei 30 Sekunden.
+  typische_ursachen: [Langsame Hardware, Hohe Last beim Systemstart, Wartende Abhaengigkeit]
+  checks: [Scheitert der Start nur unter Last, Startreihenfolge der Dienste pruefen]
+  severity_default: fehler
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Service Control Manager
+  event_id: 7045
+  bedeutung: Ein neuer Dienst wurde auf dem System eingerichtet.
+  typische_ursachen: [Softwareinstallation, Fernwartungswerkzeug, Dauerhafte Einrichtung durch Dritte]
+  checks: [Programmpfad auf ungewoehnliche Orte pruefen, Passt es zu einem bekannten Vorgang]
+  severity_default: fehler
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Application Error
+  event_id: 1000
+  bedeutung: >
+    Eine Anwendung wurde durch eine unbehandelte Ausnahme beendet. Die
+    Ereignisdaten nennen Programm, Version, fehlerhaftes Modul und Ausnahmecode.
+  typische_ursachen:
+    - Fehler in der Anwendung oder einem geladenen Modul
+    - Beschaedigte Programmdateien
+    - Defekter Arbeitsspeicher bei vielen verschiedenen Programmen
+  checks:
+    - Immer dasselbe fehlerhafte Modul
+    - Zeitliche Naehe zu einer Installation oder einem Update
+  severity_default: fehler
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Application Hang
+  event_id: 1002
+  bedeutung: Eine Anwendung hat ueber laengere Zeit nicht auf Fenstermeldungen reagiert.
+  typische_ursachen: [Wartezeit auf Netz oder Datentraeger, Blockierende Erweiterung]
+  checks: [Zeitgleiche Datentraegerfehler pruefen, Betrifft es nur Netzlaufwerke]
+  severity_default: warnung
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: disk
+  event_id: 51
+  bedeutung: Beim Auslagern auf einen Datentraeger trat ein Fehler auf.
+  typische_ursachen: [Defekte Sektoren, Kabel oder Stromversorgung, Controllerfehler]
+  checks: [SMART-Werte pruefen, Datensicherung vor weiteren Tests]
+  severity_default: kritisch
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: disk
+  event_id: 153
+  bedeutung: >
+    Ein E/A-Vorgang schlug fehl und wurde erfolgreich wiederholt. Der Zugriff
+    gelang also - der Datentraeger arbeitet aber bereits am Rand.
+  typische_ursachen: [Beginnender Datentraegerausfall, Zeitueberschreitung im Speicherpfad]
+  checks: [Rate ueber die Zeit beobachten, SMART-Werte pruefen]
+  severity_default: kritisch
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: storahci
+  event_id: 129
+  bedeutung: >
+    Der Speichercontroller hat das Geraet zurueckgesetzt, weil ein Befehl nicht
+    in der erwarteten Zeit beantwortet wurde.
+  typische_ursachen:
+    - Datentraeger antwortet zu langsam
+    - Firmware von Datentraeger oder Controller
+    - Energiesparfunktionen des Controllers
+  checks: [Firmware-Staende pruefen, Zeitliche Korrelation mit Anwendungs-Hangs]
+  severity_default: kritisch
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Ntfs
+  event_id: 55
+  bedeutung: >
+    Die Struktur des Dateisystems auf einem Datentraeger ist beschaedigt. Der
+    Zustand bessert sich ohne Pruefung nicht von selbst.
+  typische_ursachen: [Unsauberes Herunterfahren beim Schreiben, Defekte Sektoren, Fehlerhafter Treiber]
+  checks: [Datensicherung pruefen, Datentraegerpruefung einplanen]
+  severity_default: kritisch
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Microsoft-Windows-Kernel-PnP
+  event_id: 219
+  bedeutung: Ein Treiber konnte fuer ein Geraet nicht geladen werden.
+  typische_ursachen: [Treiber fehlt oder passt nicht, Signaturpruefung schlaegt fehl]
+  checks: [Geraete-Manager auf Fehlercode pruefen, setupapi.dev.log heranziehen]
+  severity_default: warnung
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Microsoft-Windows-WHEA-Logger
+  event_id: 17
+  bedeutung: >
+    Die Hardware hat einen Fehler gemeldet und selbst korrigiert. Einzeln
+    unauffaellig, in steigender Rate ein Fruehwarnsignal.
+  typische_ursachen: [Arbeitsspeicher mit beginnenden Fehlern, PCIe-Uebertragungsfehler, Temperatur]
+  checks: [Rate ueber die Zeit betrachten, Betroffene Komponente aus den Ereignisdaten bestimmen]
+  severity_default: warnung
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+# Ab hier: bewusst NICHT als gesichert markiert. Diese Eintraege gehen nicht in
+# den Prompt, und Befunde dazu erscheinen im Bericht als ungeprueft. Das ist der
+# ganze Sinn des Feldes - lieber eine Luecke als eine erfundene Bedeutung.
+
+- provider: Microsoft-Windows-WHEA-Logger
+  event_id: 19
+  bedeutung: >
+    Korrigierter Hardwarefehler. Die genaue Abgrenzung zu 17 ist nicht
+    verifiziert und muss an echten Daten bestimmt werden.
+  typische_ursachen: []
+  checks: [Ereignisdaten mit denen einer 17 auf demselben System vergleichen]
+  severity_default: warnung
+  confidence: unsicher
+
+- provider: Microsoft-Windows-WHEA-Logger
+  event_id: 18
+  bedeutung: ""
+  typische_ursachen: []
+  checks: [Bedeutung an echten Daten verifizieren, bevor sie hier eingetragen wird]
+  severity_default: kritisch
+  confidence: leer
+
+- provider: Microsoft-Windows-WindowsUpdateClient
+  event_id: 20
+  bedeutung: ""
+  typische_ursachen: []
+  checks: [Exakte Bedeutung dieser ID an echten Daten verifizieren]
+  severity_default: warnung
+  confidence: leer
+
+- provider: Microsoft-Windows-DistributedCOM
+  event_id: 10016
+  bedeutung: >
+    Eine Komponente wollte ein DCOM-Objekt starten und hatte dafuer nicht die
+    konfigurierten Rechte. Windows weicht praktisch immer aus; sichtbare
+    Auswirkungen gibt es fast nie.
+  typische_ursachen: [Standardberechtigungen von Windows-Komponenten, Frueher Zugriff im Startvorgang]
+  checks:
+    - Nur nachgehen bei exakt passendem Fehlverhalten
+    - Berechtigungen nicht vorsorglich aendern
+  severity_default: rauschen
+  quelle_url: "https://learn.microsoft.com/troubleshoot/windows-client/application-management/event-10016-logged-when-accessing-dcom"
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Microsoft-Windows-Eventlog
+  event_id: 1102
+  bedeutung: Das Sicherheitsprotokoll wurde geleert. Der Eintrag nennt das ausfuehrende Konto.
+  typische_ursachen: [Bewusste Bereinigung, Verschleierung von Spuren]
+  checks: [Konto und Zeitpunkt festhalten, Zeitnahe Fernanmeldungen pruefen]
+  severity_default: kritisch
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Microsoft-Windows-Eventlog
+  event_id: 104
+  bedeutung: Ein Ereignisprotokoll wurde geleert. Betrifft auch andere Kanaele als Security.
+  typische_ursachen: [Bereinigung durch Verwaltungssoftware, Verschleierung]
+  checks: [Betroffenen Kanal festhalten, Mit Luecken in der Zeitachse abgleichen]
+  severity_default: fehler
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Microsoft-Windows-Security-Auditing
+  event_id: 4625
+  bedeutung: >
+    Eine Anmeldung ist fehlgeschlagen. Die Ereignisdaten nennen Konto,
+    Anmeldetyp, Herkunft und Fehlerursache.
+  typische_ursachen: [Falsches Kennwort, Veraltete Dienstzugangsdaten, Systematisches Durchprobieren]
+  checks: [Ein Konto oder viele, Folgte eine erfolgreiche Anmeldung, Herkunft bestimmen]
+  severity_default: warnung
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Microsoft-Windows-Security-Auditing
+  event_id: 4624
+  bedeutung: >
+    Eine Anmeldung war erfolgreich. Aussagekraeftig wird der Eintrag erst durch
+    den Anmeldetyp - Typ 10 ist eine interaktive Anmeldung ueber das Netz.
+  typische_ursachen: [Regulaerer Betrieb, Fernwartung, Zugriff mit erbeuteten Zugangsdaten]
+  checks: [Anmeldetyp bestimmen, Uhrzeit gegen den erwarteten Betrieb pruefen]
+  severity_default: info
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Microsoft-Windows-Security-Auditing
+  event_id: 4688
+  bedeutung: >
+    Ein neuer Prozess wurde erstellt. Die Kommandozeile steht nur darin, wenn die
+    entsprechende Ueberwachungsrichtlinie aktiv ist.
+  typische_ursachen: [Normaler Betrieb]
+  checks: [Ist die Kommandozeilenprotokollierung aktiv, Ausfuehrung aus temporaeren Pfaden]
+  severity_default: info
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Microsoft-Windows-PowerShell
+  event_id: 4104
+  bedeutung: >
+    PowerShell hat ausgefuehrten Skriptcode protokolliert. Ohne aktiviertes
+    Script Block Logging entstehen diese Eintraege nur fuer als verdaechtig
+    eingestufte Bloecke - ihr Fehlen belegt also nichts.
+  typische_ursachen: [Administrationsskripte, Verwaltungssoftware, Ausfuehrung fremden Codes]
+  checks: [Ist Script Block Logging aktiv, Kodierte Befehle im Skriptblock]
+  severity_default: warnung
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"
+
+- provider: Microsoft-Windows-DNS-Client
+  event_id: 1014
+  bedeutung: Eine Namensaufloesung lief in eine Zeitueberschreitung.
+  typische_ursachen: [Kurzzeitige Netzstoerung, DNS-Server nicht erreichbar, Energiesparen der Netzwerkkarte]
+  checks: [Nur bei Buendelung nachgehen, Netzpfad und DNS-Server pruefen]
+  severity_default: rauschen
+  confidence: sicher
+  geprueft_am: "2026-09-10"
+  geprueft_von: "seed"

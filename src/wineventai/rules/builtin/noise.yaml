@@ -1,0 +1,86 @@
+# Rauschen.
+#
+# Diese Ereignisse stehen auf praktisch jedem Windows-System in grosser Zahl und
+# haben in aller Regel keinen Krankheitswert. Sie werden erkannt, klassifiziert
+# und standardmaessig unterdrueckt - sichtbar mit --show-noise. Ohne diese
+# Klassifikation ist ein Bericht unbrauchbar, weil die echten Befunde darin
+# untergehen.
+
+- id: dcom-10016
+  name: DCOM-Berechtigung (DistributedCOM 10016)
+  match:
+    channel: System
+    provider: [Microsoft-Windows-DistributedCOM, DCOM]
+    event_id: 10016
+  severity: rauschen
+  classification: rauschen
+  bedeutung: >
+    Eine Komponente wollte ein DCOM-Objekt starten und hatte dafuer nicht die
+    Rechte. Windows faellt in diesen Faellen praktisch immer auf einen anderen
+    Weg zurueck; sichtbare Auswirkungen gibt es fast nie.
+  typische_ursachen:
+    - Standardberechtigungen von Windows-Komponenten
+    - Dienste, die frueh im Startvorgang zugreifen
+  empfohlene_checks:
+    - Nur nachgehen, wenn ein konkretes Fehlverhalten zeitlich exakt dazu passt.
+    - Berechtigungen NICHT vorsorglich aendern - das ist ein bekannter Fehlgriff.
+  referenz: "https://learn.microsoft.com/troubleshoot/windows-client/application-management/event-10016-logged-when-accessing-dcom"
+
+- id: dhcp-warnung-1003
+  name: DHCP-Adresse nicht erneuert (Dhcp-Client 1003)
+  match:
+    channel: System
+    provider: [Microsoft-Windows-Dhcp-Client, Dhcp]
+    event_id: 1003
+  severity: rauschen
+  classification: rauschen
+  bedeutung: >
+    Der DHCP-Client konnte keine Adresse beziehen. Auf mobilen Geraeten beim
+    Wechsel zwischen Netzen ein Normalzustand.
+  typische_ursachen:
+    - Netzwechsel bei Notebooks
+    - WLAN kurzzeitig nicht verfuegbar
+  empfohlene_checks:
+    - Nur relevant, wenn es auf einem stationaeren Geraet gehaeuft auftritt.
+  threshold:
+    count_min: 1
+    burst_required: false
+
+- id: perflib-1008
+  name: Leistungsindikator nicht ladbar (Perflib 1008/1023)
+  match:
+    channel: Application
+    provider: [Microsoft-Windows-Perflib, Perflib]
+    event_id: [1008, 1023]
+  severity: rauschen
+  classification: rauschen
+  bedeutung: >
+    Eine Leistungsindikator-Bibliothek liess sich nicht laden. Betrifft nur die
+    Leistungsueberwachung, nicht den Betrieb der Anwendung.
+  typische_ursachen:
+    - Reste einer deinstallierten Anwendung
+    - Beschaedigte Indikator-Registrierung
+  empfohlene_checks:
+    - Nur nachgehen, wenn Leistungsdaten tatsaechlich gebraucht werden.
+
+- id: dns-client-1014
+  name: Namensaufloesung ohne Antwort (DNS-Client 1014)
+  match:
+    channel: System
+    provider: Microsoft-Windows-DNS-Client
+    event_id: 1014
+  severity: rauschen
+  classification: rauschen
+  bedeutung: >
+    Eine Namensabfrage lief in eine Zeitueberschreitung. Einzeln unauffaellig;
+    in dichten Buendeln ein Netzhinweis - deshalb ist hier ein Burst noetig,
+    damit die Regel ueberhaupt greift.
+  typische_ursachen:
+    - Kurzzeitige Netzstoerung
+    - Nicht erreichbarer DNS-Server
+    - Energiesparen der Netzwerkkarte
+  empfohlene_checks:
+    - Nur bei Buendelung nachgehen; dann Netzpfad und DNS-Server pruefen.
+  threshold:
+    count_min: 20
+    burst_required: true

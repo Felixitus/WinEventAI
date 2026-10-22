@@ -1,0 +1,82 @@
+# Hardware und Treiber.
+
+- id: whea-korrigiert
+  name: Korrigierter Hardwarefehler (WHEA-Logger 17/19)
+  match:
+    channel: System
+    provider: Microsoft-Windows-WHEA-Logger
+    event_id: [17, 19]
+  severity: warnung
+  bedeutung: >
+    Die Hardware hat einen Fehler gemeldet und selbst korrigiert. Einzeln ist
+    das unauffaellig; in Serie ist es ein Fruehwarnsignal, meist fuer
+    Arbeitsspeicher, Prozessor-Cache oder PCIe-Verbindungen.
+  typische_ursachen:
+    - Arbeitsspeicher mit beginnenden Fehlern
+    - PCIe-Verbindung mit Uebertragungsfehlern
+    - Uebertaktung oder grenzwertige Spannungen
+    - Temperatur
+  empfohlene_checks:
+    - Haeufigkeit ueber die Zeit ansehen - steigende Rate ist das eigentliche Signal.
+    - Betroffene Komponente aus den Ereignisdaten bestimmen.
+    - BIOS/UEFI- und Firmware-Stand pruefen.
+  threshold:
+    count_min: 1
+    escalate_above: 25
+    escalate_to: fehler
+
+- id: whea-nicht-korrigiert
+  name: Nicht korrigierter Hardwarefehler (WHEA-Logger 18/47)
+  match:
+    channel: System
+    provider: Microsoft-Windows-WHEA-Logger
+    event_id: [18, 47]
+  severity: kritisch
+  bedeutung: >
+    Die Hardware hat einen Fehler gemeldet, den sie nicht korrigieren konnte.
+    Das fuehrt in aller Regel zu einem Stoppfehler.
+  typische_ursachen:
+    - Defekter Arbeitsspeicher
+    - Prozessor- oder Mainboardfehler
+    - Instabile Spannungsversorgung
+  empfohlene_checks:
+    - Zeitliche Naehe zu BugCheck 1001 pruefen.
+    - Arbeitsspeichertest, danach Komponententausch.
+
+- id: kernel-pnp-219
+  name: Treiber nicht geladen (Kernel-PnP 219)
+  match:
+    channel: [System, Microsoft-Windows-Kernel-PnP/Configuration]
+    provider: Microsoft-Windows-Kernel-PnP
+    event_id: 219
+  severity: warnung
+  bedeutung: >
+    Ein Treiber konnte fuer ein Geraet nicht geladen werden. Das Geraet bleibt
+    damit ganz oder teilweise funktionslos.
+  typische_ursachen:
+    - Treiber fehlt, ist beschaedigt oder passt nicht zur Windows-Version
+    - Signaturpruefung schlaegt fehl
+    - Geraet meldet sich fehlerhaft an
+  empfohlene_checks:
+    - Geraet im Geraete-Manager suchen und Fehlercode notieren.
+    - setupapi.dev.log auf zugehoerige Fehlerzeilen ansehen (--log-files).
+    - Zeitliche Naehe zu einem Windows-Update pruefen.
+
+- id: windowsupdate-fehler
+  name: Update fehlgeschlagen (WindowsUpdateClient 20/25/31)
+  match:
+    channel: Microsoft-Windows-WindowsUpdateClient/Operational
+    provider: Microsoft-Windows-WindowsUpdateClient
+    event_id: [20, 25, 31]
+  severity: warnung
+  bedeutung: >
+    Ein Update konnte nicht installiert oder heruntergeladen werden.
+  typische_ursachen:
+    - Komponentenspeicher beschaedigt
+    - Zu wenig freier Speicherplatz
+    - Netzwerk- oder Proxyproblem
+    - Konflikt mit Sicherheitssoftware
+  empfohlene_checks:
+    - CBS.log auf Fehlerzeilen ansehen (--log-files).
+    - Freien Speicherplatz auf der Systempartition pruefen.
+    - Wiederholt sich derselbe Update-Fehler? Dann ist es kein Zufallsproblem.

@@ -1,0 +1,70 @@
+# Datentraeger und Dateisystem.
+#
+# Diese Provider heissen klein geschrieben ("disk", "storahci", "Ntfs") und
+# liegen alle im System-Kanal. "Microsoft-Windows-StorAhci" als eigener Kanal
+# existiert nach derzeitigem Kenntnisstand nicht - 'wineventai doctor' prueft
+# das auf dem Zielsystem.
+
+- id: disk-io-fehler
+  name: E/A-Fehler am Datentraeger (disk 51/153)
+  match:
+    channel: System
+    provider: disk
+    event_id: [51, 153]
+  severity: kritisch
+  bedeutung: >
+    Beim Lesen oder Schreiben trat ein Fehler auf. 153 bedeutet, dass der
+    Zugriff nach Wiederholung doch gelang - der Datentraeger arbeitet also
+    bereits am Rand seiner Zuverlaessigkeit.
+  typische_ursachen:
+    - Beginnender Datentraegerausfall, defekte Sektoren
+    - Loses oder defektes Kabel, schwache Stromversorgung
+    - Ueberlasteter oder fehlerhafter Controller
+    - "Bei virtuellen Maschinen: Engpass im darunterliegenden Speicher"
+  empfohlene_checks:
+    - SMART- und Zuverlaessigkeitswerte pruefen (--disk-health).
+    - Haeufen sich die Ereignisse in Buendeln? Dann eher Kabel oder Controller.
+    - Datensicherung pruefen, bevor weiter getestet wird.
+  threshold:
+    count_min: 1
+    escalate_above: 10
+    escalate_to: kritisch
+
+- id: storahci-reset-129
+  name: Geraete-Reset am Controller (storahci/stornvme 129)
+  match:
+    channel: System
+    provider: [storahci, stornvme, iaStorA, iaStorAC]
+    event_id: 129
+  severity: kritisch
+  bedeutung: >
+    Der Speichercontroller hat das Geraet zuruecksetzen muessen, weil ein Befehl
+    nicht in der erwarteten Zeit beantwortet wurde.
+  typische_ursachen:
+    - Datentraeger antwortet zu langsam, beginnender Ausfall
+    - Firmware des Datentraegers oder des Controllers fehlerhaft
+    - Energiesparfunktionen des Controllers (LPM) bei SSDs
+    - Verkabelung
+  empfohlene_checks:
+    - Firmware-Stand von Datentraeger und Controller pruefen.
+    - Bei SSDs Energiesparverhalten des Controllers pruefen.
+    - Zeitliche Korrelation mit Anwendungs-Hangs (1002) ansehen.
+
+- id: ntfs-dateisystemschaden
+  name: Dateisystemschaden (Ntfs 55)
+  match:
+    channel: System
+    provider: [Ntfs, Microsoft-Windows-Ntfs]
+    event_id: 55
+  severity: kritisch
+  bedeutung: >
+    Die Struktur des Dateisystems auf einem Datentraeger ist beschaedigt.
+    Windows meldet damit einen Zustand, der ohne Pruefung nicht besser wird.
+  typische_ursachen:
+    - Unsauberes Herunterfahren waehrend Schreibvorgaengen
+    - Defekte Sektoren
+    - Fehlerhafter Treiber im Speicherpfad
+  empfohlene_checks:
+    - Datensicherung pruefen, bevor irgendetwas repariert wird.
+    - Datentraegerpruefung einplanen - dieses Werkzeug fuehrt sie nicht aus.
+    - Zeitliche Naehe zu Kernel-Power 41 pruefen.

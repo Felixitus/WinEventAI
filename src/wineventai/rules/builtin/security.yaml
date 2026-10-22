@@ -1,0 +1,184 @@
+# Sicherheitsindikatoren. Nur aktiv mit --security.
+#
+# Alle Ergebnisse dieser Regeln sind ausdruecklich HINWEISE, keine forensischen
+# Feststellungen. Der Bericht kennzeichnet das an jeder Stelle.
+#
+# Genauso wichtig: Fehlt die noetige Ueberwachungsrichtlinie, muss "nicht
+# protokolliert" gemeldet werden und nicht "kein Befund". Das leistet
+# security/audit_policy.py, nicht diese Datei.
+
+- id: sec-protokoll-geloescht
+  name: Sicherheitsprotokoll geloescht (1102)
+  match:
+    channel: Security
+    provider: Microsoft-Windows-Eventlog
+    event_id: 1102
+  severity: kritisch
+  security_indicator: true
+  bedeutung: >
+    Das Sicherheitsprotokoll wurde geleert. Das ist im Normalbetrieb ein
+    seltener, bewusster Vorgang und immer erklaerungsbeduerftig.
+  typische_ursachen:
+    - Verschleierung von Spuren
+    - Bewusste Bereinigung durch Administratoren
+    - Automatismus einer Verwaltungssoftware
+  empfohlene_checks:
+    - Ausfuehrendes Konto und Zeitpunkt festhalten.
+    - Gab es zeitnah Anmeldungen von aussen (4624 Logon Type 10)?
+    - Vorhandene Sicherungen der Protokolle pruefen.
+
+- id: sec-protokoll-geloescht-104
+  name: Protokoll geloescht (104)
+  match:
+    channel: System
+    provider: Microsoft-Windows-Eventlog
+    event_id: 104
+  severity: fehler
+  security_indicator: true
+  bedeutung: >
+    Ein Ereignisprotokoll wurde geleert. Anders als 1102 betrifft das auch
+    andere Kanaele als Security.
+  typische_ursachen:
+    - Bereinigung durch Administratoren oder Verwaltungssoftware
+    - Verschleierung
+  empfohlene_checks:
+    - Betroffenen Kanal und ausfuehrendes Konto festhalten.
+    - Mit den Luecken in der Zeitachse abgleichen.
+
+- id: sec-audit-policy-geaendert
+  name: Ueberwachungsrichtlinie geaendert (4719)
+  match:
+    channel: Security
+    provider: Microsoft-Windows-Security-Auditing
+    event_id: 4719
+  severity: fehler
+  security_indicator: true
+  bedeutung: >
+    Die Systemueberwachungsrichtlinie wurde geaendert. Wird eine Kategorie
+    abgeschaltet, entstehen ab diesem Zeitpunkt keine Ereignisse mehr - das ist
+    keine Unauffaelligkeit, sondern eine Luecke.
+  typische_ursachen:
+    - Aenderung per Gruppenrichtlinie
+    - Bewusste Abschaltung der Protokollierung
+  empfohlene_checks:
+    - Welche Unterkategorie wurde geaendert, und in welche Richtung?
+    - Ab wann fehlen dadurch welche Ereignisse?
+
+- id: sec-anmeldefehler-serie
+  name: Anmeldefehler in Serie (4625)
+  match:
+    channel: Security
+    provider: Microsoft-Windows-Security-Auditing
+    event_id: 4625
+  severity: warnung
+  security_indicator: true
+  bedeutung: >
+    Mehrfach fehlgeschlagene Anmeldungen. Einzelne Fehlversuche sind Alltag;
+    eine dichte Serie ist ein Hinweis auf systematisches Ausprobieren.
+  typische_ursachen:
+    - Vergessenes Passwort, abgelaufene Anmeldedaten
+    - Dienst mit veralteten Zugangsdaten
+    - Systematisches Durchprobieren von Kennwoertern
+  empfohlene_checks:
+    - Ein Konto oder viele? Eine Quelle oder viele?
+    - Folgte auf die Serie eine erfolgreiche Anmeldung (4624)?
+    - Herkunft der Anmeldeversuche bestimmen.
+  threshold:
+    count_min: 10
+    burst_required: true
+    escalate_above: 100
+    escalate_to: fehler
+
+- id: sec-remote-anmeldung
+  name: Anmeldung ueber Remotedesktop (4624 Logon Type 10)
+  match:
+    channel: Security
+    provider: Microsoft-Windows-Security-Auditing
+    event_id: 4624
+    data:
+      LogonType: "^10$"
+  severity: warnung
+  security_indicator: true
+  bedeutung: >
+    Erfolgreiche interaktive Anmeldung ueber das Netz (Remotedesktop). Fuer sich
+    genommen voellig normal - im Zusammenhang mit anderen Indikatoren nicht.
+  typische_ursachen:
+    - Regulaere Fernwartung
+    - Zugriff von aussen mit erbeuteten Zugangsdaten
+  empfohlene_checks:
+    - Konto, Uhrzeit und Quelladresse gegen den erwarteten Betrieb pruefen.
+    - Ist die Anmeldung ausserhalb der ueblichen Arbeitszeit erfolgt?
+
+- id: sec-konto-und-gruppe
+  name: Konto angelegt oder Gruppe erweitert (4720/4728/4732)
+  match:
+    channel: Security
+    provider: Microsoft-Windows-Security-Auditing
+    event_id: [4720, 4728, 4732]
+  severity: fehler
+  security_indicator: true
+  bedeutung: >
+    Ein Benutzerkonto wurde angelegt oder einer Gruppe hinzugefuegt. Bei
+    privilegierten Gruppen ist das der klassische Schritt zur Verstetigung eines
+    Zugriffs.
+  typische_ursachen:
+    - Regulaere Benutzerverwaltung
+    - Anlage eines Kontos zur dauerhaften Nutzung durch Dritte
+  empfohlene_checks:
+    - Wurde das Konto von der zustaendigen Stelle angelegt?
+    - Um welche Gruppe geht es - administrativ oder nicht?
+
+- id: sec-neuer-dienst
+  name: Neuer Dienst eingerichtet (7045/4697)
+  match:
+    provider: [Service Control Manager, Microsoft-Windows-Security-Auditing]
+    event_id: [7045, 4697]
+  severity: fehler
+  security_indicator: true
+  bedeutung: >
+    Ein neuer Dienst wurde auf dem System eingerichtet. Dienste starten
+    automatisch mit hohen Rechten und sind deshalb ein bevorzugter Weg, sich
+    dauerhaft einzurichten.
+  typische_ursachen:
+    - Softwareinstallation
+    - Verwaltungs- oder Fernwartungswerkzeug
+    - Dauerhafte Einrichtung durch einen Angreifer
+  empfohlene_checks:
+    - Dienstname und Programmpfad pruefen - liegt er an einem ungewoehnlichen Ort?
+    - Passt die Installation zu einem bekannten Vorgang?
+
+- id: sec-powershell-scriptblock
+  name: PowerShell Script Block (4104/4103)
+  match:
+    provider: Microsoft-Windows-PowerShell
+    event_id: [4104, 4103]
+  severity: warnung
+  security_indicator: true
+  bedeutung: >
+    PowerShell hat ausgefuehrten Skriptcode protokolliert. Ohne aktiviertes
+    Script Block Logging entstehen diese Ereignisse nur fuer als verdaechtig
+    eingestufte Bloecke - das Fehlen ist also kein Beleg fuer Unauffaelligkeit.
+  typische_ursachen:
+    - Regulaere Administrationsskripte
+    - Verwaltungssoftware
+    - Ausfuehrung fremden Codes
+  empfohlene_checks:
+    - Ist Script Block Logging ueberhaupt aktiv? Sonst ist die Sicht unvollstaendig.
+    - Kodierte Befehle oder Herunterladen von Inhalten im Skriptblock?
+
+- id: sec-prozesserstellung
+  name: Prozesserstellung mit Kommandozeile (4688)
+  match:
+    channel: Security
+    provider: Microsoft-Windows-Security-Auditing
+    event_id: 4688
+  severity: info
+  security_indicator: true
+  bedeutung: >
+    Ein Prozess wurde gestartet. Nur mit aktivierter Kommandozeilenprotokollierung
+    steht auch der Aufruf selbst darin - ohne sie ist der Wert gering.
+  typische_ursachen:
+    - Normaler Betrieb
+  empfohlene_checks:
+    - Ist die Kommandozeilenprotokollierung aktiv?
+    - "Auffaellige Aufrufe: kodierte Befehle, Ausfuehrung aus temporaeren Pfaden."

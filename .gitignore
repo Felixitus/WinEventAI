@@ -1,0 +1,22 @@
+# Build-Ausgaben (packaging/build.ps1 erzeugt sie neu)
+build/
+dist/
+*.spec.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Altlasten eines frueheren Arbeitsstands: One-File-Builds und Installer-
+# Vorlagen, die gegen die One-Dir-Regel (AGENTS.md) verstossen. Lokal
+# aufbewahrt, nicht versioniert.
+attic/
+
+# Laufverzeichnisse und lokale Konfiguration
+runs/
+wineventai.yaml
+opencode.json
