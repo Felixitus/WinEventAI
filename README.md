@@ -325,12 +325,35 @@ decision.
 4. **IPv6 versus IPv4.** `localhost` can resolve to `::1` while Ollama only
    listens on `127.0.0.1`. Then enter `http://127.0.0.1:11434`.
 
-### Model choice
+### Model choice: `wineventai ai bench`
 
-Criteria in this order: declared context length ≥ 32k and within the RAM
-budget at that length; reliable grammar-bound JSON output; usable English;
-only then parameter count. The default `qwen2.5:14b-instruct` has not yet been
-verified by an acceptance test (open item).
+```powershell
+wineventai ai bench                          # every local model Ollama lists
+wineventai ai bench -m gemma4:26b -m qwen3-coder:30b
+```
+
+The acceptance test sends three fixed scenarios (unclean restart after disk
+retries, a crash series, a service killed by a driver) through the **real**
+pipeline - rules, redaction, bundle, model, evidence check - and judges every
+model by these gates, in this order:
+
+| Gate | Threshold (`ai.bench`) |
+|---|---|
+| Context length the model supports | ≥ `min_context_length` (32,768); "unknown" fails |
+| Schema-valid answer for every finding | all of them |
+| Statements rejected by the evidence check | ≤ `max_rejected_share` (20 %); no statements at all also fails |
+| Answers in English | stop-word heuristic, reported as such |
+
+Among the passed models, all within `rejection_tolerance` (10 points) of the
+lowest rejected share count as equally reliable, and the fastest of them is
+recommended - one rejection more out of a few dozen statements is noise, a
+factor of eight in run time is not. Speed and GPU offload are reported, not
+judged. Models that cannot be tested
+(missing, cloud without opt-in, embedding models) are listed as "not tested",
+never as "failed". The command changes nothing: it prints a recommendation
+(`ai.model: "..."`) and writes a JSON file with every answer to
+`%PROGRAMDATA%\WinEventAI\bench\`, so that the language can be read, not
+only counted.
 
 Every model statement carries structured evidence (`provider`, `event_id`,
 `timestamp_utc`) that is checked against the input bundle. The single

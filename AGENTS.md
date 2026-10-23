@@ -75,7 +75,7 @@ language model.
 ```bash
 pip install -e ".[dev]"      # development (PySide6 included)
 pip install -e ".[gui]"      # user interface only
-python -m pytest -q          # 257 tests, all must be green
+python -m pytest -q          # 286 tests, all must be green
 ruff check src/ tests/       # must be clean
 ```
 
@@ -84,7 +84,7 @@ installation first - otherwise pip keeps pointing to the old folder).
 Release: `packaging\build.ps1` (tests, linter, PyInstaller one-dir, ZIP,
 SHA-256).
 
-CLI: `collect | analyze | run | report | evidence | doctor | gui |
+CLI: `collect | analyze | run | report | evidence | doctor | gui | ai bench |
 kb {list,search,stats,unknown,reseed} | config {init,path,show}`
 
 ## 6. Module map
@@ -97,7 +97,8 @@ src/wineventai/
   enrich/      Dedup, burst, boot sessions, correlation, retention
   rules/       YAML rules + deterministic engine (6 files, 30 rules)
   kb/          Knowledge base (SQLite), unknown_ids.csv
-  ai/          Ollama client, cloud guard, bundles, redaction, evidence check
+  ai/          Ollama client, cloud guard, bundles, redaction, evidence check,
+               model acceptance test (bench.py, bench_cases.yaml)
   probes/      Context probes + probes/scripts/*.ps1
   report/      HTML (Jinja2) / Markdown / JSON from ONE model
   security/    Security mode, audit policy, blind spots

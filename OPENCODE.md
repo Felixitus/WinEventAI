@@ -7,7 +7,7 @@ git clone https://github.com/Felixitus/WinEventAI.git
 cd WinEventAI
 python -m venv .venv && . .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-python -m pytest -q        # must report 257 passed
+python -m pytest -q        # must report 286 passed
 ruff check src/ tests/     # must be clean
 opencode
 ```
@@ -39,22 +39,19 @@ Two different models, do not mix them up:
 - **The model that works on the code** (OpenCode): take the largest coder
   variant that fits your hardware. A 30B coder from 24 GB VRAM, a 14B coder
   from 12 GB, 7B only for small changes.
-- **The model WinEventAI uses at run time** (`ai.model` in the configuration,
-  default `qwen2.5:14b-instruct`): optional - without it the report comes from
-  the rule engine. Which model is best is an open question, see `HANDOVER.md`
-  item 6. The acceptance test `ai bench` is specified but not built.
+- **The model WinEventAI uses at run time** (`ai.model` in the configuration):
+  optional - without it the report comes from the rule engine. Choose it with
+  `wineventai ai bench`, not by size.
 
 ## First task for the model
 
 Take one item from `HANDOVER.md` section 10 and only one. Suggestion by benefit
 per effort:
 
-1. **Build `ai bench`** (item 6). Pure Python, no Windows needed, easy to
-   test, and only then can the model choice be justified instead of guessed.
-2. **Time synchronization probe** (item 7) as a fourth probe. `probes/time.py`
+1. **Time synchronization probe** (item 7) as a fourth probe. `probes/time.py`
    plus `probe_time.ps1`, copy the pattern one to one from
    `probes/services.py`. Hangs on W32Time 36/47.
-3. Everything else needs a real Windows machine.
+2. Everything else needs a real Windows machine.
 
 ## Prompt to start
 

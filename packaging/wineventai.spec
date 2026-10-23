@@ -22,6 +22,7 @@ datas = [
     (str(PACKAGE / "rules" / "builtin"), "wineventai/rules/builtin"),
     (str(PACKAGE / "kb" / "seed.yaml"), "wineventai/kb"),
     (str(PACKAGE / "ai" / "prompts"), "wineventai/ai/prompts"),
+    (str(PACKAGE / "ai" / "bench_cases.yaml"), "wineventai/ai"),
     (str(PACKAGE / "report" / "templates"), "wineventai/report/templates"),
     (str(PACKAGE / "report" / "assets"), "wineventai/report/assets"),
 ]

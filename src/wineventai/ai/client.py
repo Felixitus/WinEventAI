@@ -160,6 +160,7 @@ class OllamaClient:
         self._effective_num_ctx: int | None = None
         self._opener_cache: urllib.request.OpenerDirector | None = None
         self._status: OllamaStatus | None = None
+        self._details: dict[str, Any] | None = None
 
     # --- Transport -----------------------------------------------------------
 
@@ -221,6 +222,20 @@ class OllamaClient:
 
     # --- Context window ------------------------------------------------------
 
+    def model_details(self) -> dict[str, Any] | None:
+        """The ``/api/show`` answer for the configured model, or ``None``.
+
+        Cached: the answer does not change during a run, and the bench and the
+        context check would otherwise ask twice.
+        """
+        if self._details is not None:
+            return self._details
+        try:
+            self._details = self._post("/api/show", {"model": self.model})
+        except (OllamaUnavailableError, HttpStatusError):
+            return None
+        return self._details
+
     def model_context_length(self) -> int | None:
         """Queries the model's actual context length.
 
@@ -228,9 +243,8 @@ class OllamaClient:
         (``llama.context_length``, ``qwen2.context_length`` ...), so the name
         pattern is searched instead of a fixed key.
         """
-        try:
-            payload = self._post("/api/show", {"model": self.model})
-        except (OllamaUnavailableError, HttpStatusError):
+        payload = self.model_details()
+        if payload is None:
             return None
         info = payload.get("model_info") or {}
         for key, value in info.items():
@@ -318,6 +332,26 @@ class OllamaClient:
         payload = self._request("/api/tags", timeout=min(self.timeout, 15.0))
         models = payload.get("models") or []
         return [entry for entry in models if isinstance(entry, dict)]
+
+    def loaded_size(self) -> tuple[int, int] | None:
+        """``(size, size_vram)`` in bytes of the loaded model from ``/api/ps``.
+
+        Only meaningful right after a call, while the model is still loaded.
+        ``None`` if Ollama does not list it - that is "not measured", not
+        "zero bytes".
+        """
+        try:
+            payload = self._request("/api/ps", timeout=min(self.timeout, 15.0))
+        except (OllamaUnavailableError, HttpStatusError):
+            return None
+        for entry in payload.get("models") or []:
+            if not isinstance(entry, dict):
+                continue
+            if (entry.get("name") or entry.get("model")) == self.model:
+                size, vram = entry.get("size"), entry.get("size_vram")
+                if isinstance(size, int) and isinstance(vram, int) and size > 0:
+                    return size, vram
+        return None
 
     def list_models(self) -> list[str]:
         """Names of the locally listed models."""

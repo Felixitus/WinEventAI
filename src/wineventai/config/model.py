@@ -143,6 +143,42 @@ class RulesConfig(BaseModel):
     security_mode: bool = False
 
 
+class AiBenchConfig(BaseModel):
+    """Acceptance thresholds of ``wineventai ai bench``.
+
+    In the configuration and not in the code, because they are a judgement
+    call: whoever accepts more rejected statements for a faster model should
+    say so in a file, not in a patch.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The model must SUPPORT at least this context, not use it. Below 32k the
+    #: split bundles of a busy machine no longer fit with system prompt and
+    #: answer.
+    min_context_length: int = 32768
+    #: Share of statements the evidence check may reject. Above that the
+    #: report shows more rejection notes than explanations.
+    max_rejected_share: float = Field(default=0.2, ge=0.0, le=1.0)
+    #: Passed models whose rejected share is within this distance of the best
+    #: one count as equally reliable; among them the fastest is recommended.
+    #: The scenarios yield a few dozen statements - one rejection more is
+    #: noise, a factor of eight in run time is not. Found by the first live
+    #: run: 0/17 vs. 1/16 rejected would otherwise have picked a model that
+    #: was 8.5x slower and gave vaguer answers.
+    rejection_tolerance: float = Field(default=0.1, ge=0.0, le=1.0)
+    #: Separate from ai.timeout_seconds: the first call also loads the model,
+    #: which takes minutes for a 30B model from a hard disk.
+    timeout_seconds: float = 600.0
+
+    @field_validator("min_context_length")
+    @classmethod
+    def _positive(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("min_context_length must be positive")
+        return value
+
+
 class AiConfig(BaseModel):
     """The optional language model layer.
 
@@ -171,6 +207,7 @@ class AiConfig(BaseModel):
         ),
     )
     redact: bool = True
+    bench: AiBenchConfig = Field(default_factory=AiBenchConfig)
 
     @field_validator("temperature")
     @classmethod

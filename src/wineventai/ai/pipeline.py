@@ -216,7 +216,12 @@ class AiLayer:
 
         for part in parts:
             user_prompt = part.as_prompt_json()
-            estimated += estimate_tokens(user_prompt, self.config.chars_per_token)
+            # The system prompt counts too: Ollama's prompt_eval_count covers
+            # both messages. Estimating the bundle alone made every comparison
+            # look ~2.5x off and the calibration warning fired on every call.
+            estimated += estimate_tokens(
+                system_prompt + user_prompt, self.config.chars_per_token
+            )
             parsed, reply_tokens, note = self._call_with_retry(
                 client, system_prompt, user_prompt, schema, ExplainerOutput
             )

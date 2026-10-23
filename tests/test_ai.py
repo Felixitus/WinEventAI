@@ -311,6 +311,27 @@ def test_a_valid_answer_is_taken_over() -> None:
     assert entry.explanation.summary
 
 
+def test_the_token_estimate_includes_the_system_prompt() -> None:
+    """Ollama's prompt_eval_count counts both messages - the estimate must too.
+
+    Found by the model bench: without the system prompt every call was
+    estimated ~2.5x too low and the calibration warning fired every time.
+    """
+    from wineventai.ai.pipeline import EXPLAINER_PROMPT
+    from wineventai.resources import read_resource_text
+
+    findings = _findings()[:1]
+    client = FakeClient([_fixture("explainer_good.json")] * 3)
+    result, bundles = AiLayer(AiConfig(), client=client).run(findings, CONTEXT)
+
+    config = AiConfig()
+    bundle_only = estimate_tokens(
+        bundles[findings[0].finding_id][0].as_prompt_json(), config.chars_per_token
+    )
+    system_only = estimate_tokens(read_resource_text(EXPLAINER_PROMPT), config.chars_per_token)
+    assert result.findings[0].prompt_tokens_estimated >= bundle_only + system_only - 1
+
+
 def test_a_cloud_call_without_opt_in_is_blocked() -> None:
     with pytest.raises(CloudCallBlockedError):
         assert_local("http://ollama.example.com:11434", allow_cloud=False)

@@ -1,0 +1,178 @@
+# Fixed scenarios for 'wineventai ai bench'.
+#
+# Every scenario is a small, invented but realistic event stream. The bench
+# sends it through the SAME path as a real run - enrich, rules, redaction,
+# bundle, model, evidence check - so that the acceptance test measures what
+# the report will show, not a prompt written for the test.
+#
+# Rules for new scenarios:
+# - Every scenario must produce at least one finding with the bundled rules
+#   (a test checks that), otherwise the model is never asked.
+# - Use English messages: the prompts are English, and the language check of
+#   the bench is meant to measure the model, not the input.
+# - Leave personal data in (user paths, host names): the redaction has to
+#   replace them, and the model must not invent placeholders of its own.
+# - Times are seconds before 'end_utc'. The fixed end keeps the bundles
+#   identical between runs, so that two bench results can be compared.
+
+end_utc: "2026-01-15T10:00:00Z"
+
+scenarios:
+  - id: unclean-restart
+    title: Unclean restart after disk retries
+    host: WS-4711
+    events:
+      - seconds_before: 0
+        channel: System
+        provider: EventLog
+        event_id: 6005
+        level: 4
+        message: "The Event log service was started."
+      - seconds_before: 2
+        channel: System
+        provider: EventLog
+        event_id: 6008
+        level: 2
+        message: "The previous system shutdown at 09:47:12 on 15.01.2026 was unexpected."
+        properties: ["09:47:12", "15.01.2026", "", "", "", "", ""]
+      - seconds_before: 3
+        channel: System
+        provider: Microsoft-Windows-Kernel-Power
+        event_id: 41
+        level: 1
+        message: >-
+          The system has rebooted without cleanly shutting down first. This error
+          could be caused if the system stopped responding, crashed, or lost power
+          unexpectedly.
+        properties: ["0", "0x0", "0x0", "0x0", "0x0", "0x0", "false", "0"]
+      - seconds_before: 150
+        channel: System
+        provider: disk
+        event_id: 153
+        level: 3
+        message: >-
+          The IO operation at logical block address 0x2f0e18 for Disk 1 (PDO name:
+          \Device\0000003a) was retried.
+        properties: ["\\Device\\Harddisk1\\DR1", "0x2f0e18", "1", "\\Device\\0000003a"]
+      - seconds_before: 190
+        channel: System
+        provider: disk
+        event_id: 153
+        level: 3
+        message: >-
+          The IO operation at logical block address 0x2f0e20 for Disk 1 (PDO name:
+          \Device\0000003a) was retried.
+        properties: ["\\Device\\Harddisk1\\DR1", "0x2f0e20", "1", "\\Device\\0000003a"]
+      - seconds_before: 240
+        channel: System
+        provider: disk
+        event_id: 51
+        level: 3
+        message: "An error was detected on device \\Device\\Harddisk1\\DR1 during a paging operation."
+        properties: ["\\Device\\Harddisk1\\DR1"]
+
+  - id: app-crash-series
+    title: Repeated crash of a user application
+    host: WS-4711
+    events:
+      - seconds_before: 300
+        channel: Application
+        provider: Application Error
+        event_id: 1000
+        level: 2
+        message: >-
+          Faulting application name: reportgen.exe, version: 3.2.1.0, time stamp:
+          0x65a1b2c3. Faulting module name: ntdll.dll, version: 10.0.22621.3155.
+          Exception code: 0xc0000374. Fault offset: 0x00000000000ff6a9. Faulting
+          application path: C:\Users\m.schmidt\AppData\Local\ReportGen\reportgen.exe
+        properties: ["reportgen.exe", "3.2.1.0", "65a1b2c3", "ntdll.dll", "10.0.22621.3155",
+                     "a1b2c3d4", "c0000374", "00000000000ff6a9", "12108", "134127745312304132",
+                     "C:\\Users\\m.schmidt\\AppData\\Local\\ReportGen\\reportgen.exe",
+                     "C:\\Windows\\SYSTEM32\\ntdll.dll",
+                     "5b1f3c2e-8a7d-4e21-9c4b-1f2e3d4c5b6a", "", ""]
+      - seconds_before: 4200
+        channel: Application
+        provider: Application Error
+        event_id: 1000
+        level: 2
+        message: >-
+          Faulting application name: reportgen.exe, version: 3.2.1.0, time stamp:
+          0x65a1b2c3. Faulting module name: ntdll.dll, version: 10.0.22621.3155.
+          Exception code: 0xc0000374. Fault offset: 0x00000000000ff6a9. Faulting
+          application path: C:\Users\m.schmidt\AppData\Local\ReportGen\reportgen.exe
+        properties: ["reportgen.exe", "3.2.1.0", "65a1b2c3", "ntdll.dll", "10.0.22621.3155",
+                     "a1b2c3d4", "c0000374", "00000000000ff6a9", "6920", "134127710154203321",
+                     "C:\\Users\\m.schmidt\\AppData\\Local\\ReportGen\\reportgen.exe",
+                     "C:\\Windows\\SYSTEM32\\ntdll.dll",
+                     "0e9d8c7b-6a59-4837-b2a1-c0d9e8f7a6b5", "", ""]
+      - seconds_before: 9100
+        channel: Application
+        provider: Application Error
+        event_id: 1000
+        level: 2
+        message: >-
+          Faulting application name: reportgen.exe, version: 3.2.1.0, time stamp:
+          0x65a1b2c3. Faulting module name: ntdll.dll, version: 10.0.22621.3155.
+          Exception code: 0xc0000374. Fault offset: 0x00000000000ff6a9. Faulting
+          application path: C:\Users\m.schmidt\AppData\Local\ReportGen\reportgen.exe
+        properties: ["reportgen.exe", "3.2.1.0", "65a1b2c3", "ntdll.dll", "10.0.22621.3155",
+                     "a1b2c3d4", "c0000374", "00000000000ff6a9", "3140", "134127661208850015",
+                     "C:\\Users\\m.schmidt\\AppData\\Local\\ReportGen\\reportgen.exe",
+                     "C:\\Windows\\SYSTEM32\\ntdll.dll",
+                     "a3b4c5d6-e7f8-4091-a2b3-c4d5e6f7a8b9", "", ""]
+
+  - id: service-crash
+    title: Print spooler terminates because of a printer driver
+    host: SRV-PRINT01
+    events:
+      - seconds_before: 60
+        channel: System
+        provider: Service Control Manager
+        event_id: 7034
+        level: 2
+        message: "The Print Spooler service terminated unexpectedly. It has done this 3 time(s)."
+        properties: ["Print Spooler", "3", "530070006F006F006C00650072000000"]
+      - seconds_before: 62
+        channel: Application
+        provider: Application Error
+        event_id: 1000
+        level: 2
+        message: >-
+          Faulting application name: spoolsv.exe, version: 10.0.20348.2340, time
+          stamp: 0x1a2b3c4d. Faulting module name: PrnDrvX64.dll, version: 6.1.0.12.
+          Exception code: 0xc0000005. Fault offset: 0x0000000000012af0. Faulting
+          application path: C:\Windows\System32\spoolsv.exe
+        properties: ["spoolsv.exe", "10.0.20348.2340", "1a2b3c4d", "PrnDrvX64.dll",
+                     "6.1.0.12", "5e6f7a8b", "c0000005", "0000000000012af0", "3344", "134127772501120044",
+                     "C:\\Windows\\System32\\spoolsv.exe",
+                     "C:\\Windows\\System32\\spool\\drivers\\x64\\3\\PrnDrvX64.dll",
+                     "7c6b5a49-3827-4615-9e8d-7c6b5a493827", "", ""]
+      - seconds_before: 1860
+        channel: System
+        provider: Service Control Manager
+        event_id: 7034
+        level: 2
+        message: "The Print Spooler service terminated unexpectedly. It has done this 2 time(s)."
+        properties: ["Print Spooler", "2", "530070006F006F006C00650072000000"]
+      - seconds_before: 1862
+        channel: Application
+        provider: Application Error
+        event_id: 1000
+        level: 2
+        message: >-
+          Faulting application name: spoolsv.exe, version: 10.0.20348.2340, time
+          stamp: 0x1a2b3c4d. Faulting module name: PrnDrvX64.dll, version: 6.1.0.12.
+          Exception code: 0xc0000005. Fault offset: 0x0000000000012af0. Faulting
+          application path: C:\Windows\System32\spoolsv.exe
+        properties: ["spoolsv.exe", "10.0.20348.2340", "1a2b3c4d", "PrnDrvX64.dll",
+                     "6.1.0.12", "5e6f7a8b", "c0000005", "0000000000012af0", "2712", "134127754498870211",
+                     "C:\\Windows\\System32\\spoolsv.exe",
+                     "C:\\Windows\\System32\\spool\\drivers\\x64\\3\\PrnDrvX64.dll",
+                     "19283746-5a6b-4c7d-8e9f-a0b1c2d3e4f5", "", ""]
+      - seconds_before: 3660
+        channel: System
+        provider: Service Control Manager
+        event_id: 7034
+        level: 2
+        message: "The Print Spooler service terminated unexpectedly. It has done this 1 time(s)."
+        properties: ["Print Spooler", "1", "530070006F006F006C00650072000000"]

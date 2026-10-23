@@ -1,6 +1,6 @@
 # WinEventAI - Handover
 
-**Version 2.0.0 · 257 tests green · ruff clean · as of 22 Oct 2026**
+**Version 2.1.0 · 286 tests green · ruff clean · as of 23 Oct 2026**
 
 This file is the complete state of knowledge for further development outside
 the original session. The working contract is in `AGENTS.md`; this file holds
@@ -11,14 +11,14 @@ scope, rationale and open items.
 ## 1. Scope
 
 ~12,700 lines of Python in 76 modules, 9 PowerShell collection/probe scripts,
-30 rules in 6 YAML files, 257 tests in 15 files.
+30 rules in 6 YAML files, 286 tests in 16 files.
 
 | Package | Lines | Task |
 |---|---:|---|
 | `collect/` | 2384 | Collection, PowerShell, run directory, error sweep |
 | `gui/` | 2178 | PySide6 user interface |
 | `probes/` | 1507 | Context probes |
-| `ai/` | 1489 | Ollama, bundles, redaction, evidence check, cloud guard |
+| `ai/` | ~2000 | Ollama, bundles, redaction, evidence check, cloud guard, model bench |
 | `report/` | 715 | HTML/Markdown/JSON |
 | `enrich/` | 704 | Dedup, burst, boot, correlation, retention |
 | `rules/` | 615 | Rule schema, loader, engine |
@@ -30,7 +30,7 @@ scope, rationale and open items.
 | `cli.py` | 764 | Typer |
 | `analyze.py` | 224 | Pipeline wiring |
 
-Tests per file: gui 32, probes 29, collect_sweep 27, ai 21, collect_shell 19,
+Tests per file: gui 32, probes 29, collect_sweep 27, ai_bench 28, ai 22, collect_shell 19,
 rules 18, evidence/config 15, ollama_status 15, enrich 14, config_init 13,
 report 13, kb_stats 9, security 8, end_to_end 7, normalize 6.
 
@@ -249,6 +249,49 @@ system browser. `theme.py` shares the palette with the report,
 would be the only distinction otherwise, and about eight percent of men
 cannot tell red from orange.
 
+### 4.10 ai bench (2.1.0)
+
+`ai/bench.py` + `ai/bench_cases.yaml`. Three fixed scenarios (unclean restart
+after disk retries, crash series of a user application, print spooler killed
+by a driver) go through enrich, rules, redaction, `AiLayer` and the evidence
+check unchanged - the bench measures what the report will show.
+
+Gates in this order, thresholds in `ai.bench`: context length the model
+supports (`/api/show`; unknown fails), schema-valid answer for every finding,
+rejected share of statements (answers without any statement fail too - they
+would evade the check), English by a stop-word heuristic. Speed and GPU offload
+(`/api/ps`, `size_vram / size`) are reported, not judged.
+
+"not tested" (missing model, cloud model without opt-in, embedding model by
+`capabilities`) is kept apart from "failed". Recommendation: fewest
+rejections, then speed - deliberately not parameter count. Nothing is changed;
+the JSON result with every answer goes to `%PROGRAMDATA%\WinEventAIench\`.
+
+Recommendation: among passed models, every model whose rejected share is
+within `rejection_tolerance` (0.1) of the best counts as equally reliable; the
+fastest of them wins. A strict "fewest rejections first" ranked noise.
+
+**First live run** (23 Oct 2026, RX 7900 XTX 24 GB, Ollama, 3 scenarios,
+8 findings, `num_ctx` 16384):
+
+| Model | Size | Status | Statements | Rejected | Time |
+|---|---|---|---:|---:|---:|
+| qwen3-coder:30b | 30.5B Q4_K_M | passed | 16 | 1 (6 %) | 46 s |
+| deepseek-r1:8b | 8.2B Q4_K_M | passed | 17 | 0 | 393 s |
+| gemma4:26b | 25.8B Q4_K_M | failed: schema violation for Kernel-Power 41 twice | 19 | 0 | 569 s |
+| glm-5.2:cloud | - | not tested (cloud, no opt-in) | - | - | - |
+
+All three fit 100 % into video memory. Reading the answers: qwen3-coder names
+the printer driver as the cause with "high" confidence and gives concrete
+checks; deepseek-r1 stays vague ("might be a system error", "unclear").
+The one qwen3-coder rejection was "verify that Event ID 6006 is not missing" -
+a strict but correct rejection: the id is not in the bundle. Not yet
+measured: the original default `qwen2.5:14b-instruct` (not installed here).
+
+Found by the first live run: the calibration warning "token estimate deviates
+clearly" fired on every call, because Ollama's `prompt_eval_count` includes the
+system prompt and the estimate did not. Fixed in `pipeline._explain`.
+
 ## 5. Run directory
 
 ```
@@ -364,9 +407,9 @@ is not exported.
 
 **Not built yet:**
 
-6. **`ai bench`** - acceptance test for the model choice is specified but not
-   implemented. Until then the model choice is open; the default is
-   `qwen2.5:14b-instruct`.
+6. ~~`ai bench`~~ - **built in 2.1.0**, see 4.10. Still open: the default
+   `ai.model` should follow from a bench run on target hardware, not from this
+   developer machine alone.
 7. **Further probes**, but only by the same criterion (every probe has to
    explain or rule out a finding):
    - Domain controller for Netlogon 5719 - needs a reliable source for the DC

@@ -110,6 +110,14 @@ ai:
   # itself forwards to a cloud service (e.g. "*:cloud" models).
   allow_cloud: false
   redact: true
+  # Acceptance thresholds of 'wineventai ai bench'. The bench runs fixed
+  # scenarios through the real pipeline and checks every installed model
+  # against them; it changes nothing, it only recommends.
+  bench:
+    min_context_length: 32768   # the model must support at least this
+    max_rejected_share: 0.2     # share of statements the evidence check may reject
+    rejection_tolerance: 0.1    # closer to the best than this counts as equal; then speed decides
+    timeout_seconds: 600        # per call; the first call also loads the model
 
 # Context probes. They measure the CURRENT state related to a finding - a ping
 # to the DNS server for DNS Client 1014, the service state for SCM 7031, disk

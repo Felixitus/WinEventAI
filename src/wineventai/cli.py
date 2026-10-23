@@ -9,6 +9,7 @@ Commands:
 * ``evidence`` - pack an evidence bundle as ZIP
 * ``doctor``   - check the environment: PowerShell, channels, Ollama, rights
 * ``kb``       - show and maintain the knowledge base
+* ``ai bench`` - acceptance test: which local model is fit for the reports
 * ``config``   - create the configuration and show effective values
 * ``gui``      - graphical user interface (needs PySide6)
 """
@@ -52,6 +53,8 @@ kb_app = typer.Typer(no_args_is_help=True, help="Show and maintain the knowledge
 app.add_typer(kb_app, name="kb")
 config_app = typer.Typer(no_args_is_help=True, help="Create and show the configuration.")
 app.add_typer(config_app, name="config")
+ai_app = typer.Typer(no_args_is_help=True, help="Check the optional language model.")
+app.add_typer(ai_app, name="ai")
 
 ConfigOption = Annotated[
     Path | None, typer.Option("--config", "-c", help="Own configuration file.")
@@ -719,6 +722,88 @@ def kb_stats() -> None:
     with KnowledgeBase.open_default() as kb:
         for line in format_stats(compute_stats(kb.all_entries()), str(kb.path)):
             typer.echo(line)
+
+
+@ai_app.command("bench")
+def ai_bench(
+    config_path: ConfigOption = None,
+    models: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--model", "-m",
+            help="Model to test; repeatable. Default: every local model Ollama lists.",
+        ),
+    ] = None,
+    ollama_url: Annotated[
+        str | None, typer.Option("--ollama-url", help="Base URL, once.")
+    ] = None,
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Where to write the JSON result.")
+    ] = None,
+) -> None:
+    """Measures which local model is fit for the reports - and recommends one.
+
+    Fixed scenarios go through the real pipeline: rules, redaction, bundle,
+    model, evidence check. Thresholds come from 'ai.bench' in the
+    configuration. Nothing is changed; the result is a recommendation and a
+    JSON file with every answer, so that the language can be read, not only
+    counted.
+
+    Without Ollama there is nothing to measure: the command says so and ends
+    with exit code 1. The rest of the tool keeps working from the rule engine.
+    """
+    from .ai.bench import (
+        default_models,
+        default_output_path,
+        format_report,
+        run_bench,
+        write_report,
+    )
+    from .ai.client import CloudCallBlockedError, OllamaClient
+
+    config = load_config(
+        config_path,
+        _overrides(days=None, security=False, no_ai=False, show_noise=False,
+                   model=None, ollama_url=ollama_url),
+    )
+    configure(config.log_level)
+
+    try:
+        probe = OllamaClient(
+            base_url=config.ai.base_url, model=config.ai.model,
+            timeout_seconds=15.0, allow_cloud=config.ai.allow_cloud,
+        )
+        state = probe.status()
+    except CloudCallBlockedError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED)
+        raise typer.Exit(code=1) from exc
+    if not state.reachable:
+        typer.secho(
+            f"Ollama is not reachable at {config.ai.base_url} - there is no model to "
+            "measure. Reports keep working from the rule engine.",
+            fg=typer.colors.YELLOW,
+        )
+        raise typer.Exit(code=1)
+
+    chosen = models or default_models(probe, allow_cloud=config.ai.allow_cloud)
+    if not chosen:
+        typer.secho("Ollama lists no local model. Example: ollama pull qwen2.5:14b-instruct",
+                    fg=typer.colors.YELLOW)
+        raise typer.Exit(code=1)
+
+    typer.echo(f"Testing {len(chosen)} model(s). The first call of each model also loads it.")
+    report = run_bench(
+        config.ai,
+        chosen,
+        progress=lambda model: typer.echo(f"  ... {model}"),
+    )
+    typer.echo("")
+    for line in format_report(report):
+        typer.echo(line)
+    path = write_report(report, output or default_output_path())
+    typer.echo(f"Details and all answers: {path}")
+    if report.recommended_model is None:
+        raise typer.Exit(code=1)
 
 
 def _print_summary(report_model: object, run: RunDirectory) -> None:
