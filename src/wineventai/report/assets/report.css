@@ -52,6 +52,13 @@ h4 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase;
 p { margin: 0 0 12px; max-width: 74ch; }
 .lede { color: var(--ink-soft); margin-bottom: 16px; }
 .empty { color: var(--ink-faint); font-style: italic; }
+.compare { margin: 0 0 18px; }
+.compare-line { font-weight: 600; margin: 0 0 6px; }
+.compare-list { margin: 6px 0 0; padding-left: 0; list-style: none; }
+.compare-list li { margin: 4px 0; }
+.change-new { color: var(--crit); border: 1px solid currentColor; }
+.change-more { color: var(--err); border: 1px solid currentColor; }
+.change-gone { color: var(--ink-faint); border: 1px solid currentColor; }
 ul { margin: 0 0 12px; padding-left: 20px; } li { margin-bottom: 4px; }
 a { color: var(--accent); }
 

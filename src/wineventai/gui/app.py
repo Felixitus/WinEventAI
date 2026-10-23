@@ -68,7 +68,7 @@ def _set_taskbar_identity() -> None:
         return
 
 
-def run_gui(config: Config | None = None) -> int:
+def run_gui(config: Config | None = None, *, security: bool = False) -> int:
     """Starts the window and returns the exit code of the application."""
     if not gui_available():
         print(GUI_MISSING, file=sys.stderr)
@@ -86,13 +86,15 @@ def run_gui(config: Config | None = None) -> int:
     _set_taskbar_identity()
     app.setWindowIcon(app_icon())
 
-    window = MainWindow(config or load_config())
+    window = MainWindow(config or load_config(), security=security)
     window.show()
     return int(app.exec())
 
 
 def main() -> int:  # pragma: no cover - entry point
-    return run_gui()
+    from .elevation import wants_security_mode
+
+    return run_gui(security=wants_security_mode(sys.argv))
 
 
 if __name__ == "__main__":  # pragma: no cover

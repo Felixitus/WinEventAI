@@ -59,6 +59,23 @@ def render_markdown(report: ReportModel) -> str:
 
     add("## 2 · Findings")
     add("")
+    comparison = report.comparison
+    add(comparison.summary())
+    if comparison.note and comparison.available:
+        add("")
+        add(comparison.note)
+    add("")
+    for label, entries in (
+        ("New", comparison.new),
+        ("More frequent", comparison.more_frequent),
+        ("Not seen in this window", comparison.not_seen),
+    ):
+        for entry in entries:
+            before = f", before {entry.count_before}x" if entry.count_before is not None else ""
+            now = f"{entry.count_now}x" if entry.count_now is not None else "-"
+            add(f"- {label}: {entry.rule_name} ({now}{before})")
+    if comparison.new or comparison.more_frequent or comparison.not_seen:
+        add("")
     if not report.findings:
         add("No rule hits in the covered period.")
         add("")

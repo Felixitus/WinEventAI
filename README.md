@@ -36,18 +36,37 @@ to a cloud service (for example `*:cloud` models).
 The report is **complete without a language model as well**. The AI delivers
 the last twenty percent; dedup, noise filter and knowledge base are the core.
 
-## Running it as an EXE
+## Download and start - no commands needed
 
-The release is a folder (PyInstaller one-dir) with two programs:
+1. Download **`WinEventAI-Setup-<version>.exe`** from
+   [Releases](https://github.com/Felixitus/WinEventAI/releases/latest).
+2. Double-click it. It installs for your user only - **no admin rights**, no
+   Python, no Ollama needed.
+3. Start **WinEventAI** from the start menu, choose the time window, click
+   *Start analysis*.
 
-| File | Purpose |
+For the Security channel and the security mode, click *Restart as
+administrator* in the window; Windows shows its normal UAC prompt.
+
+The executables are not code-signed, so SmartScreen may show "Windows
+protected your PC" (*More info* → *Run anyway*). Compare the file with
+`SHA256SUMS.txt` from the release first:
+
+```powershell
+(Get-FileHash .\WinEventAI-Setup-<version>.exe -Algorithm SHA256).Hash
+```
+
+| Download | For |
 |---|---|
-| `wineventai-gui.exe` | The window. Double-click, choose the time window, *Start analysis*. |
-| `wineventai.exe` | The command line, e.g. `wineventai.exe run` or `wineventai.exe doctor`. |
+| `WinEventAI-Setup-<version>.exe` | Everyone: installer with start menu entry and uninstaller |
+| `wineventai-<version>-win64.zip` | Portable use, e.g. from a USB stick: unpack, start `wineventai-gui.exe` |
 
-Unpack `wineventai-<version>-win64.zip` anywhere and start one of them. No
-Python, no installation and no Ollama are required. Build it yourself with
-`packaging\build.ps1` (see [Release](#release)).
+Both contain the same two programs: `wineventai-gui.exe` (the window) and
+`wineventai.exe` (the command line, optionally added to PATH by the
+installer).
+
+Your data - configuration, runs, reports - lives in
+`%LOCALAPPDATA%\WinEventAI` and stays when you uninstall.
 
 ## Installation from source
 
@@ -147,8 +166,9 @@ Layout, in this order and for the same reasons as in the report:
 
 | Element | Purpose |
 |---|---|
-| Run bar | Time window, security mode, language model on/off, start and cancel |
-| Headline | The one sentence that is read first |
+| Run bar | Time window, security mode, language model on/off, *Restart as administrator* (only without admin rights), start and cancel |
+| Headline | The one sentence that is read first, plus the change since the previous run |
+| Action buttons | *Open report*, *Open folder*, *Create evidence ZIP* - after a run |
 | Warning banner | Appears if the period was not collected completely |
 | Tab *Findings* | List on the left (severity, name, count, last), detail on the right - with the probe results for the selected finding |
 | Tab *Coverage* | Incomplete sources at the top, highlighted, with a visible note column |
@@ -171,6 +191,7 @@ need this program.
 | `network` | DNS Client 1014, Dhcp-Client 1003, Tcpip 4227/4231, NetBT 4321 | Ping to DNS server, default gateway, DHCP server; plus a real name query |
 | `service` | SCM 7000/7009/7031/7034 | State, start type, account and last exit code of the affected service |
 | `storage` | disk 7/51/153, storahci/stornvme 129, Ntfs 55, volsnap 25 | Health, reliability counters, overall SMART status, free space |
+| `time` | Time-Service 36/47/48/50/129/134 | W32Time state and source; the real offset by one SNTP request - only to time sources in the local network |
 
 Five promises that define the scope:
 
@@ -197,7 +218,7 @@ The collector does not write into objects but into a directory; everything
 after it reads only from there.
 
 ```
-%PROGRAMDATA%\WinEventAI\runs\2026-09-10T14-22-03Z_WS-4711\
+%LOCALAPPDATA%\WinEventAI\runs\2026-09-10T14-22-03Z_WS-4711\
   run.json                 time window, host, account, tool version, TZ offset
   sources.json             per source: status, covered period, figures
   raw\*.ndjson             one record per line, descending by time
@@ -234,7 +255,7 @@ wineventai config init     # create the user configuration
 wineventai config show     # EFFECTIVE values after merging
 ```
 
-The file in `%PROGRAMDATA%\WinEventAI\` is **not created by itself**, and
+The file in `%LOCALAPPDATA%\WinEventAI\` is **not created by itself**, and
 `config init` writes it **completely commented out**. Only what you uncomment
 takes effect; everything else stays tied to the bundled defaults.
 
@@ -246,7 +267,7 @@ collect:
 ```
 
 Precedence, weakest first: bundled defaults →
-`%PROGRAMDATA%\WinEventAI\wineventai.yaml` → `--config <file>` → CLI switches.
+`%LOCALAPPDATA%\WinEventAI\wineventai.yaml` → `--config <file>` → CLI switches.
 
 The time window is **never shrunk automatically**. A silently shrunken window
 lets someone read "no findings" for a period that was never analyzed.
@@ -254,7 +275,7 @@ lets someone read "no findings" for a period that was never analyzed.
 ## Extending rules
 
 Bundled rules live in the package, own ones in
-`%PROGRAMDATA%\WinEventAI\rules\*.yaml`. Merging is by `id`; the origin appears
+`%LOCALAPPDATA%\WinEventAI\rules\*.yaml`. Merging is by `id`; the origin appears
 in the report.
 
 ```yaml
@@ -277,7 +298,7 @@ field names and severities such as `kritisch`) keep loading.
 
 ## Knowledge base
 
-SQLite with FTS5 at `%PROGRAMDATA%\WinEventAI\kb.sqlite`, key is
+SQLite with FTS5 at `%LOCALAPPDATA%\WinEventAI\kb.sqlite`, key is
 `provider + event_id`.
 
 ```powershell
@@ -298,7 +319,7 @@ kept.
 ### Setting the address
 
 ```yaml
-# %PROGRAMDATA%\WinEventAI\wineventai.yaml  - permanent
+# %LOCALAPPDATA%\WinEventAI\wineventai.yaml  - permanent
 ai:
   base_url: "http://127.0.0.1:11434"
   model: "qwen2.5:14b-instruct"
@@ -354,7 +375,7 @@ judged. Models that cannot be tested
 (missing, cloud without opt-in, embedding models) are listed as "not tested",
 never as "failed". The command changes nothing: it prints a recommendation
 (`ai.model: "..."`) and writes a JSON file with every answer to
-`%PROGRAMDATA%\WinEventAI\bench\`, so that the language can be read, not
+`%LOCALAPPDATA%\WinEventAI\bench\`, so that the language can be read, not
 only counted.
 
 Every model statement carries structured evidence (`provider`, `event_id`,
@@ -381,11 +402,25 @@ ZIP with original `.evtx` (`wevtutil epl`), normalized JSON, report,
 `manifest.json` and `verify.ps1`. The checksum is taken over the `.evtx`
 original. The bundle is **not** pseudonymized - it is evidence.
 
-## Data protection
+## Comparison with the previous run
+
+Every analysis compares itself with the previous analyzed run of the same
+machine: **new** findings, findings that became **more frequent** (per day,
+because the time windows may differ) and findings **not seen in this
+window** - deliberately not "resolved", because an absent event proves no
+repair. The line appears in the window under the headline and in the report
+above the findings. Thresholds in `report.compare`.
+
+## Data protection and security
 
 Event logs contain personal data (logon times, account names).
 `--report-redacted` additionally writes a shareable version with stable
 pseudonyms; the mapping table lies separately next to it.
+
+All data lives in `%LOCALAPPDATA%\WinEventAI` - private to your user. Up to
+2.2.0 it was `C:\ProgramData\WinEventAI`, where every local user may write
+and read; a planted configuration could have redirected an administrator's
+run. That folder is no longer read; see [SECURITY.md](SECURITY.md).
 
 ## Tests
 
@@ -405,14 +440,23 @@ messages: they prove that nothing depends on localized text.
 .\packaging\build.ps1
 ```
 
-Runs tests and linter, then builds two executables from the same analysis:
-`wineventai.exe` (console) and `wineventai-gui.exe` (no console window), packs
-them as `dist\wineventai-<version>-win64.zip` and prints its SHA-256.
+Runs tests and linter, builds two executables from the same analysis -
+`wineventai.exe` (console) and `wineventai-gui.exe` (no console window) - with
+icon and version resource, puts the licence texts next to them, packs
+`dist\wineventai-<version>-win64.zip`, builds
+`dist\WinEventAI-Setup-<version>.exe` with Inno Setup 6
+(`packaging\installer.iss`; `winget install JRSoftware.InnoSetup --scope user`)
+and writes `dist\SHA256SUMS.txt`.
 
 PyInstaller **one-dir**, not one-file: one-file unpacks to `%TEMP%` on every
 start and looks like packer behavior to EDR. Without a code-signing
 certificate SmartScreen remains; distribute via an internal share or software
 distribution with the documented SHA-256.
+
+## Licence
+
+MIT - see [LICENSE](LICENSE). The release bundles Python, Qt/PySide6 (LGPL-3.0)
+and further libraries; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Non-goals of version 2
 

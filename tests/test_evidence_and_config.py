@@ -192,3 +192,32 @@ def test_the_hash_function_works_on_files(tmp_path) -> None:
     assert sha256_file(path) == (
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
     )
+
+
+def test_the_evidence_button_exports_only_channels_that_delivered_records(fixture_run) -> None:
+    """Empty, locked or disabled channels would fail or add nothing to the bundle."""
+    from wineventai.collect.base import SourceStatus
+    from wineventai.evidence.bundle import default_evidence_channels
+
+    expected = [
+        source.source_id.split(":", 1)[1]
+        for source in fixture_run.read_sources()
+        if source.source_id.startswith("channel:")
+        and source.status in (SourceStatus.COLLECTED, SourceStatus.TRUNCATED)
+        and source.records_read
+    ]
+    channels = default_evidence_channels(fixture_run)
+    assert channels == expected
+    assert all(not name.startswith("sweep") for name in channels)
+
+
+def test_without_powershell_the_bundle_still_comes_into_existence(fixture_run, tmp_path) -> None:
+    import zipfile
+
+    from wineventai.evidence.bundle import create_evidence
+
+    path = create_evidence(
+        fixture_run, channels=["System"], shell=None, destination=tmp_path / "e.zip"
+    )
+    with zipfile.ZipFile(path) as archive:
+        assert "manifest.json" in archive.namelist()

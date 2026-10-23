@@ -1,4 +1,4 @@
-"""Loading rules: bundled defaults plus overlay from %PROGRAMDATA%.
+"""Loading rules: bundled defaults plus overlay from %LOCALAPPDATA%.
 
 Merging is by ``id``. The origin goes into ``RuleDefinition.source`` and later
 into the report - otherwise someone will eventually argue about a finding that
@@ -13,7 +13,7 @@ import yaml
 from pydantic import ValidationError
 
 from ..applog import get_log
-from ..resources import program_data_dir, resource_path
+from ..resources import data_dir, resource_path
 from .schema import RuleDefinition
 
 BUILTIN_FILES = (
@@ -68,7 +68,7 @@ def builtin_rules() -> list[RuleDefinition]:
 def overlay_dir(configured: str | None = None) -> Path:
     if configured:
         return Path(configured)
-    return program_data_dir() / "rules"
+    return data_dir() / "rules"
 
 
 def overlay_rules(configured: str | None = None) -> list[RuleDefinition]:

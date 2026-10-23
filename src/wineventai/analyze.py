@@ -24,6 +24,7 @@ from .enrich.merge import merge_sources
 from .kb.store import KnowledgeBase
 from .kb.unknown import collect_unknown, write_unknown_csv
 from .probes.runner import ProbeRunner
+from .report.compare import RunComparison, compare_runs, find_previous_run
 from .report.html import write_html
 from .report.json_out import write_json
 from .report.markdown import write_markdown
@@ -163,6 +164,18 @@ def analyze_run(
         is_admin=meta.is_admin,
     )
 
+    comparison = None
+    if config.report.compare.enabled:
+        comparison = compare_runs(
+            meta,
+            findings,
+            find_previous_run(run),
+            increase_factor=config.report.compare.increase_factor,
+            min_count=config.report.compare.min_count,
+        )
+    else:
+        comparison = RunComparison(note="Comparison with the previous run disabled.")
+
     report = build_report(
         title=config.report.title,
         meta=meta,
@@ -174,6 +187,7 @@ def analyze_run(
         unknown_ids=unknown,
         raw_appendix_limit=config.report.raw_appendix_limit,
         redacted=config.report.redacted,
+        comparison=comparison,
     )
 
     written: list[Path] = []

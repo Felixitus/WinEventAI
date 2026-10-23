@@ -233,11 +233,27 @@ class ProbesConfig(BaseModel):
     network: bool = True
     services: bool = True
     storage: bool = True
+    time: bool = True
+    #: Kerberos fails from 300 s on; far below that a skew already shifts
+    #: every timeline. 2 s is well above normal NTP jitter in a LAN.
+    time_max_offset_seconds: float = Field(default=2.0, gt=0.0)
     timeout_seconds: float = Field(
         default=30.0, description="Upper limit per probe call, not per target."
     )
     ping_count: int = Field(default=3, ge=1, le=10)
     ping_timeout_ms: int = Field(default=1500, ge=100, le=10_000)
+
+
+class CompareConfig(BaseModel):
+    """Comparison with the previous run of the same machine."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    #: Per day, not per run: the windows of the two runs may differ in length.
+    increase_factor: float = Field(default=2.0, gt=1.0)
+    #: Below this a doubling is noise: 1 -> 2 is not a trend.
+    min_count: int = Field(default=3, ge=1)
 
 
 class ReportConfig(BaseModel):
@@ -247,6 +263,7 @@ class ReportConfig(BaseModel):
     redacted: bool = False
     raw_appendix_limit: int = 200
     title: str = "WinEventAI diagnostic report"
+    compare: CompareConfig = Field(default_factory=CompareConfig)
 
 
 class Config(BaseModel):

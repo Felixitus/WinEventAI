@@ -43,6 +43,7 @@ from .base import (
 from .network import ROLE_FOR, NetworkProbe
 from .services import SERVICE_EVENTS, ServiceProbe
 from .storage import STORAGE_EVENTS, StorageProbe
+from .timesync import TIME_EVENTS, TimeProbe
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..rules.engine import Finding
@@ -54,6 +55,7 @@ ALL_PROBE_TITLES: dict[str, str] = {
     NetworkProbe.probe_id: NetworkProbe.title,
     ServiceProbe.probe_id: ServiceProbe.title,
     StorageProbe.probe_id: StorageProbe.title,
+    TimeProbe.probe_id: TimeProbe.title,
 }
 
 #: Which provider/id pairs request which probe. The same basis as
@@ -63,6 +65,7 @@ CANDIDATE_KEYS: dict[str, frozenset[tuple[str, int]]] = {
     NetworkProbe.probe_id: frozenset(ROLE_FOR),
     ServiceProbe.probe_id: SERVICE_EVENTS,
     StorageProbe.probe_id: STORAGE_EVENTS,
+    TimeProbe.probe_id: TIME_EVENTS,
 }
 
 
@@ -83,6 +86,15 @@ def build_probes(config: Config, shell: ShellInfo) -> list[Probe]:
         probes.append(ServiceProbe(shell, timeout_seconds=settings.timeout_seconds))
     if settings.storage:
         probes.append(StorageProbe(shell, timeout_seconds=settings.timeout_seconds))
+    if settings.time:
+        probes.append(
+            TimeProbe(
+                shell,
+                timeout_seconds=settings.timeout_seconds,
+                max_offset_seconds=settings.time_max_offset_seconds,
+                request_timeout_ms=settings.ping_timeout_ms,
+            )
+        )
     return probes
 
 
@@ -99,6 +111,8 @@ def _disabled_probe_ids(config: Config) -> list[str]:
         off.append(ServiceProbe.probe_id)
     if not settings.storage:
         off.append(StorageProbe.probe_id)
+    if not settings.time:
+        off.append(TimeProbe.probe_id)
     return off
 
 

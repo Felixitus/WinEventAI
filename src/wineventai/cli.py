@@ -40,6 +40,7 @@ from .config import Config, load_config
 from .config.loader import user_config_path
 from .console import harden_console_streams
 from .kb.store import KnowledgeBase
+from .resources import LEGACY_NOTE, data_dir, legacy_shared_data
 from .rules.loader import RuleLoadError, load_rules, overlay_dir
 
 app = typer.Typer(
@@ -318,14 +319,13 @@ def evidence(
     config_path: ConfigOption = None,
 ) -> None:
     """Packs an evidence bundle with original .evtx, report, manifest and verify.ps1."""
-    from .evidence.bundle import build_bundle, export_channels
+    from .evidence.bundle import create_evidence
 
     config = load_config(config_path)
     configure(config.log_level)
     run = RunDirectory.open(run_dir)
-    destination = target or run.path / f"evidence_{run.read_meta().run_id}.zip"
 
-    exported: list[tuple[Path, str | None]] = []
+    shell: ShellInfo | None = None
     if channels:
         try:
             shell = find_powershell(config.collect.powershell_preference)
@@ -336,18 +336,19 @@ def evidence(
                 "and the manifest says so.",
                 fg=typer.colors.YELLOW,
             )
-        else:
-            exported = export_channels(
-                run, list(channels), shell=shell, target_dir=run.path / "evtx"
-            )
 
-    path = build_bundle(run, destination, evtx_files=exported)
+    path = create_evidence(run, channels=list(channels or []), shell=shell, destination=target)
     typer.echo(f"Evidence bundle: {path}")
     typer.echo("Verify in the extracted directory with verify.ps1.")
 
 
 @app.command()
-def gui(config_path: ConfigOption = None) -> None:
+def gui(
+    config_path: ConfigOption = None,
+    security: Annotated[
+        bool, typer.Option("--security", help="Open with security mode ticked.")
+    ] = False,
+) -> None:
     """Starts the graphical user interface.
 
     PySide6 is an optional dependency. The command line remains the way for
@@ -357,7 +358,7 @@ def gui(config_path: ConfigOption = None) -> None:
 
     config = load_config(config_path)
     configure(config.log_level)
-    raise typer.Exit(code=run_gui(config))
+    raise typer.Exit(code=run_gui(config, security=security))
 
 
 @app.command()
@@ -402,6 +403,12 @@ def doctor(
         typer.echo("                       Create with: wineventai config init")
     typer.echo(f"Rule overlay         : {overlay_dir(config.rules.overlay_dir)}")
     typer.echo(f"Run directories      : {default_runs_root()}")
+    legacy = legacy_shared_data()
+    if legacy is not None:
+        typer.secho(
+            "Old data folder      : " + LEGACY_NOTE.format(target=data_dir()),
+            fg=typer.colors.YELLOW,
+        )
 
     try:
         shell = find_powershell(config.collect.powershell_preference)
@@ -432,6 +439,7 @@ def doctor(
                 ("network", config.probes.network),
                 ("services", config.probes.services),
                 ("disks", config.probes.storage),
+                ("time", config.probes.time),
             )
             if on
         ]
@@ -605,7 +613,7 @@ def config_init(
         bool, typer.Option("--force", help="Overwrite an existing file (keeps a .bak).")
     ] = False,
 ) -> None:
-    """Creates the user configuration in %PROGRAMDATA%.
+    """Creates the user configuration in %LOCALAPPDATA%.
 
     It deliberately does not appear by itself on first start: a file nobody
     created is read by nobody - and freezes values anyway.

@@ -16,6 +16,58 @@ PACKAGE = ROOT / "src" / "wineventai"
 # Program icon, generated from docs/logo.svg by packaging/make_icons.py.
 ICON = str(PACKAGE / "gui" / "assets" / "wineventai.ico")
 
+# Version resource: what Explorer shows under Properties > Details. An EXE
+# without it looks like something nobody stands behind - to users and to
+# reputation-based scanners alike. The version is read from the package, so
+# there is exactly one place that holds it.
+import re  # noqa: E402
+
+from PyInstaller.utils.win32.versioninfo import (  # noqa: E402
+    FixedFileInfo,
+    StringFileInfo,
+    StringStruct,
+    StringTable,
+    VarFileInfo,
+    VarStruct,
+    VSVersionInfo,
+)
+
+VERSION = re.search(
+    r'__version__ = "([^"]+)"', (PACKAGE / "__init__.py").read_text(encoding="utf-8")
+).group(1)
+VERSION_TUPLE = tuple(int(part) for part in VERSION.split(".")[:3]) + (0,)
+AUTHOR = "Felix Spiß"  # escaped: no non-ASCII characters in source code
+
+
+def version_resource(internal_name, description):
+    return VSVersionInfo(
+        ffi=FixedFileInfo(
+            filevers=VERSION_TUPLE,
+            prodvers=VERSION_TUPLE,
+            mask=0x3F,
+            flags=0x0,
+            OS=0x40004,
+            fileType=0x1,
+            subtype=0x0,
+            date=(0, 0),
+        ),
+        kids=[
+            StringFileInfo([
+                StringTable("040904B0", [
+                    StringStruct("CompanyName", AUTHOR),
+                    StringStruct("FileDescription", description),
+                    StringStruct("FileVersion", VERSION),
+                    StringStruct("InternalName", internal_name),
+                    StringStruct("LegalCopyright", f"(c) 2026 {AUTHOR}, MIT licence"),
+                    StringStruct("OriginalFilename", f"{internal_name}.exe"),
+                    StringStruct("ProductName", "WinEventAI"),
+                    StringStruct("ProductVersion", VERSION),
+                ])
+            ]),
+            VarFileInfo([VarStruct("Translation", [0x0409, 1200])]),
+        ],
+    )
+
 # Bundled resources. resource_path() later finds them via sys._MEIPASS or
 # the directory next to the EXE - the rest of the code knows nothing of it.
 datas = [
@@ -87,6 +139,7 @@ exe = EXE(  # noqa: F821
     exclude_binaries=True,
     name="wineventai",
     icon=ICON,
+    version=version_resource("wineventai", "WinEventAI command line"),
     console=True,
     disable_windowed_traceback=False,
     upx=False,  # UPX is exactly the packer signature we want to avoid
@@ -104,6 +157,7 @@ if HAS_QT:
         exclude_binaries=True,
         name="wineventai-gui",
         icon=ICON,
+        version=version_resource("wineventai-gui", "WinEventAI"),
         console=False,
         disable_windowed_traceback=False,
         upx=False,

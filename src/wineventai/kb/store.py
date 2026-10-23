@@ -22,7 +22,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..applog import get_log
-from ..resources import program_data_dir, resource_path
+from ..resources import data_dir, resource_path
 
 SEED_RESOURCE = "kb/seed.yaml"
 DB_NAME = "kb.sqlite"
@@ -164,13 +164,13 @@ class KnowledgeBase:
 
     @classmethod
     def default_path(cls) -> Path:
-        return program_data_dir() / DB_NAME
+        return data_dir() / DB_NAME
 
     @classmethod
     def open_default(cls, *, seed_if_empty: bool = True) -> KnowledgeBase:
         """Opens the knowledge base and creates it on first start.
 
-        The database is materialized in %PROGRAMDATA% and not kept in the
+        The database is materialized in %LOCALAPPDATA% and not kept in the
         package directory: a SQLite file in ``sys._MEIPASS`` is read-only, and
         that is exactly where such tools otherwise fail at the first attempt to
         maintain it.

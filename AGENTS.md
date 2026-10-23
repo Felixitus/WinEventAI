@@ -75,14 +75,14 @@ language model.
 ```bash
 pip install -e ".[dev]"      # development (PySide6 included)
 pip install -e ".[gui]"      # user interface only
-python -m pytest -q          # 290 tests, all must be green
+python -m pytest -q          # 326 tests, all must be green
 ruff check src/ tests/       # must be clean
 ```
 
 On Windows: `install.ps1` in the project folder (removes an existing
 installation first - otherwise pip keeps pointing to the old folder).
-Release: `packaging\build.ps1` (tests, linter, PyInstaller one-dir, ZIP,
-SHA-256).
+Release: `packaging\build.ps1` (tests, linter, PyInstaller one-dir, licences,
+ZIP, Setup.exe via Inno Setup, SHA256SUMS.txt).
 
 CLI: `collect | analyze | run | report | evidence | doctor | gui | ai bench |
 kb {list,search,stats,unknown,reseed} | config {init,path,show}`
@@ -95,17 +95,20 @@ src/wineventai/
                including the error sweep (sweep.py, sweep_errors.ps1)
   normalize/   EventRecord schema, masking for the fingerprint
   enrich/      Dedup, burst, boot sessions, correlation, retention
-  rules/       YAML rules + deterministic engine (6 files, 30 rules)
+  rules/       YAML rules + deterministic engine (6 files, 31 rules)
   kb/          Knowledge base (SQLite), unknown_ids.csv
   ai/          Ollama client, cloud guard, bundles, redaction, evidence check,
                model acceptance test (bench.py, bench_cases.yaml)
-  probes/      Context probes + probes/scripts/*.ps1
-  report/      HTML (Jinja2) / Markdown / JSON from ONE model
+  probes/      Context probes (network, service, storage, time) + scripts/*.ps1
+  report/      HTML (Jinja2) / Markdown / JSON from ONE model; compare.py
+               compares with the previous run of the same machine
   security/    Security mode, audit policy, blind spots
-  gui/         PySide6, contains NO diagnostic logic
+  gui/         PySide6, contains NO diagnostic logic; elevation.py restarts
+               via UAC
   analyze.py   The pipeline wiring
   cli.py       Typer
-  resources.py The only place that knows PyInstaller paths
+  resources.py The only place that knows PyInstaller paths and the data
+               folder (%LOCALAPPDATA%\WinEventAI - never ProgramData)
 ```
 
 Order of the pipeline:

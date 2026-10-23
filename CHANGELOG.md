@@ -3,6 +3,31 @@
 All versions of WinEventAI. Rationale and lessons behind each fix are in
 `HANDOVER.md`.
 
+## 2.3.0 - 2026-10-23
+
+Download a Setup.exe, double-click, done - no command line needed.
+
+- **Setup.exe** (Inno Setup): per-user installation without admin rights,
+  start menu entry, optional desktop shortcut, optional `wineventai` in PATH,
+  English and German, uninstaller. The ZIP stays as a portable variant.
+- **Security fix: private data folder.** Configuration, rules, knowledge base
+  and runs moved from `C:\ProgramData\WinEventAI` (writable and readable by
+  every local user - a planted configuration could have redirected an
+  administrator's run) to `%LOCALAPPDATA%\WinEventAI`. The old folder is no
+  longer read; `doctor` and the window point it out.
+- **Restart as administrator** in the window, via the UAC prompt; keeps the
+  security-mode tick.
+- **Action buttons** after a run: open report, open folder, create evidence
+  ZIP (original `.evtx` of the collected core channels).
+- **Comparison with the previous run**: new, more frequent (per day), not seen
+  in this window - in the window, in HTML, Markdown and JSON.
+- **Time probe** with the new rule `time-sync-warning` (Time-Service
+  36/47/48/50/129/134): W32Time state, source, and the real offset via SNTP -
+  only to time sources in the local network.
+- Licence: MIT. `THIRD_PARTY_NOTICES.md`, LGPL/GPL/PSF texts and the licence
+  files of all bundled packages ship with the release. `SECURITY.md`.
+- Both EXE files carry a version resource (Properties → Details).
+
 ## 2.2.0 - 2026-10-23
 
 - Program logo: `docs/logo.svg`, a reduced variant for 16/24 px

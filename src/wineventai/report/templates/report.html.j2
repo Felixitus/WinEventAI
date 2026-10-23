@@ -67,6 +67,18 @@
 
 <section>
   <h2>2 · Findings</h2>
+  {% set cmp = report.comparison %}
+  <div class="compare">
+    <p class="compare-line">{{ cmp.summary() }}</p>
+    {% if cmp.available and cmp.note %}<p class="muted">{{ cmp.note }}</p>{% endif %}
+    {% if cmp.new or cmp.more_frequent or cmp.not_seen %}
+    <ul class="compare-list">
+      {% for entry in cmp.new %}<li><span class="chip change-new">new</span> {{ entry.rule_name }} <span class="muted">({{ entry.count_now }}×)</span></li>{% endfor %}
+      {% for entry in cmp.more_frequent %}<li><span class="chip change-more">more frequent</span> {{ entry.rule_name }} <span class="muted">({{ entry.per_day_before }} → {{ entry.per_day_now }} per day)</span></li>{% endfor %}
+      {% for entry in cmp.not_seen %}<li><span class="chip change-gone">not seen in this window</span> {{ entry.rule_name }} <span class="muted">(before {{ entry.count_before }}×)</span></li>{% endfor %}
+    </ul>
+    {% endif %}
+  </div>
   {% if report.severity_counts %}
   <p class="chips">
     {% for entry in report.severity_counts %}
@@ -84,6 +96,8 @@
     <div class="finding-head">
       <span class="chip sev-{{ finding.severity }}">{{ finding.severity }}{% if finding.escalated %} (escalated){% endif %}</span>
       <h3>{{ finding.rule_name }}</h3>
+      {% set change = report.comparison.change_for(finding.finding_id) %}
+      {% if change %}<span class="chip change-{{ 'new' if change.change == 'new' else 'more' }}">{{ change.change }}</span>{% endif %}
       <span class="mono muted">{{ finding.group.provider }}:{{ finding.group.event_id }}</span>
     </div>
 

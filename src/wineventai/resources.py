@@ -70,18 +70,56 @@ def read_resource_text(relative: str) -> str:
     return resource_path(relative).read_text(encoding="utf-8")
 
 
-def program_data_dir() -> Path:
-    """Writable directory for configuration, rule overlay and knowledge base.
+#: Where versions before 2.3.0 kept their data. Only looked at to warn - never
+#: read from, see ``data_dir``.
+LEGACY_SHARED_DIR = Path(r"C:\ProgramData\WinEventAI")
 
-    On Windows ``%PROGRAMDATA%\\WinEventAI``, otherwise ``~/.local/share/wineventai``.
-    The directory is not created here; callers do that when needed.
+
+def data_dir() -> Path:
+    """Writable directory for configuration, rule overlay, knowledge base and runs.
+
+    On Windows ``%LOCALAPPDATA%/WinEventAI``, otherwise
+    ``~/.local/share/wineventai``. The directory is not created here; callers do
+    that when needed.
+
+    Why per user and not ``%PROGRAMDATA%`` (as up to 2.2.0): below ProgramData
+    every local user may create files in every subfolder and read everything.
+    A normal user could therefore plant a ``wineventai.yaml`` with
+    ``allow_cloud`` and a foreign address, or a rule overlay, and the next
+    administrator who runs the tool would load it - and send redacted Security
+    log content out. The reports themselves, with logon times and account
+    names, were readable by everyone as well. The profile folder is private to
+    its owner (plus SYSTEM and administrators), and an elevated start of the
+    same account uses the same folder.
     """
     import os
 
-    program_data = os.environ.get("WINEVENTAI_DATA_DIR")
-    if program_data:
-        return Path(program_data)
+    override = os.environ.get("WINEVENTAI_DATA_DIR")
+    if override:
+        return Path(override)
     if sys.platform == "win32":
-        base = os.environ.get("PROGRAMDATA", r"C:\ProgramData")
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         return Path(base) / "WinEventAI"
     return Path.home() / ".local" / "share" / "wineventai"
+
+
+def legacy_shared_data() -> Path | None:
+    """The pre-2.3.0 shared data folder, if it still exists - for a visible note.
+
+    Its content is deliberately not migrated: whatever lies there may have been
+    planted by another user, and copying it into the private folder would carry
+    exactly that risk along.
+    """
+    import os
+
+    if sys.platform != "win32" or os.environ.get("WINEVENTAI_DATA_DIR"):
+        return None
+    return LEGACY_SHARED_DIR if LEGACY_SHARED_DIR.is_dir() else None
+
+
+LEGACY_NOTE = (
+    f"Data of a version before 2.3.0 lies in {LEGACY_SHARED_DIR}. It is no "
+    "longer read: every user of this machine can write there. Configuration, "
+    "rules and runs now live in your own profile ({target}). Copy your own "
+    "configuration over by hand if you trust it, then delete the old folder."
+)

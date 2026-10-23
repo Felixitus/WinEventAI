@@ -40,6 +40,13 @@ class Environment:
     ollama_detail: str | None = None
     ollama_enabled: bool = True
     model_name: str = ""
+    #: Visible note about the pre-2.3.0 shared data folder, if it still exists.
+    legacy_note: str | None = None
+
+    @property
+    def can_elevate(self) -> bool:
+        """The admin restart only makes sense on Windows and without admin rights."""
+        return self.platform == "win32" and not self.admin
 
     @property
     def ready_to_collect(self) -> bool:
@@ -130,6 +137,11 @@ def probe_environment(config: Config) -> Environment:
             env.kb_entries = kb.count()
     except Exception as exc:  # noqa: BLE001 - a broken KB must not kill the startup
         env.rules_error = env.rules_error or f"Knowledge base: {exc}"
+
+    from ..resources import LEGACY_NOTE, data_dir, legacy_shared_data
+
+    if legacy_shared_data() is not None:
+        env.legacy_note = LEGACY_NOTE.format(target=data_dir())
 
     path = user_config_path()
     env.config_path = str(path)

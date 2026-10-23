@@ -1,6 +1,6 @@
 # WinEventAI - Handover
 
-**Version 2.2.0 · 290 tests green · ruff clean · as of 23 Oct 2026**
+**Version 2.3.0 · 326 tests green · ruff clean · as of 23 Oct 2026**
 
 This file is the complete state of knowledge for further development outside
 the original session. The working contract is in `AGENTS.md`; this file holds
@@ -11,7 +11,7 @@ scope, rationale and open items.
 ## 1. Scope
 
 ~12,700 lines of Python in 76 modules, 9 PowerShell collection/probe scripts,
-30 rules in 6 YAML files, 290 tests in 16 files.
+31 rules in 6 YAML files, 326 tests in 19 files.
 
 | Package | Lines | Task |
 |---|---:|---|
@@ -159,7 +159,7 @@ P4 reservoir sampling with a fixed seed.
 ### 4.4 rules
 
 30 rules in `core_application`, `core_system`, `hardware`, `noise`,
-`security`, `storage`. Overlay from `%PROGRAMDATA%\WinEventAI\rules`.
+`security`, `storage`. Overlay from `%LOCALAPPDATA%\WinEventAI\rules`.
 
 Rule ids:
 `application-error-1000 application-hang-1002 wer-report minidump-present
@@ -265,7 +265,7 @@ would evade the check), English by a stop-word heuristic. Speed and GPU offload
 "not tested" (missing model, cloud model without opt-in, embedding model by
 `capabilities`) is kept apart from "failed". Recommendation: fewest
 rejections, then speed - deliberately not parameter count. Nothing is changed;
-the JSON result with every answer goes to `%PROGRAMDATA%\WinEventAIench\`.
+the JSON result with every answer goes to `%LOCALAPPDATA%\WinEventAI\bench\`.
 
 Recommendation: among passed models, every model whose rejected share is
 within `rejection_tolerance` (0.1) of the best counts as equally reliable; the
@@ -292,10 +292,54 @@ Found by the first live run: the calibration warning "token estimate deviates
 clearly" fired on every call, because Ollama's `prompt_eval_count` includes the
 system prompt and the estimate did not. Fixed in `pipeline._explain`.
 
+### 4.11 Release 2.3.0: download and run without commands
+
+**Data folder per user.** `resources.data_dir()` is
+`%LOCALAPPDATA%\WinEventAI`, no longer `C:\ProgramData\WinEventAI`. Measured
+ACL of the old folder: `BUILTIN\Users:(CI)(WD,AD,WEA,WA)` and `(OI)(CI)(RX)` -
+every local user could create files in every subfolder and read all reports.
+A planted `wineventai.yaml` (`allow_cloud` plus a foreign `base_url`) or rule
+overlay would have been loaded by the next administrator's run. The old
+folder is never read and never migrated (its content may be the planted
+part); `legacy_shared_data()` only feeds a visible note in `doctor` and the
+GUI log. An elevated start of the same account uses the same profile folder.
+
+**Setup.exe instead of one-file.** `packaging/installer.iss` (Inno Setup 6,
+per user, `PrivilegesRequired=lowest`) wraps the one-dir build. A one-file EXE
+was rejected: it unpacks ~150 MB to `%TEMP%` on every start (EDR heuristics,
+slow start) and hides the Qt DLLs that the LGPL wants replaceable.
+`[InstallDelete]` removes `_internal` before an update, so no library of an
+older version survives. PATH is optional, per user, and removed on uninstall.
+The data folder is kept on uninstall - reports may be evidence.
+
+**Licences.** MIT for WinEventAI. `packaging/collect_licenses.py` copies
+LICENSE, THIRD_PARTY_NOTICES.md, the GPL/LGPL/PSF texts and the dist-info
+licence files of every bundled package next to the EXE; a missing one fails
+the build. The Qt wheels only ship a reference to the commercial Qt licence;
+that file is deliberately not copied - the LGPL applies.
+
+**Admin restart** (`gui/elevation.py`): `ShellExecuteW` with `runas`; the
+command is a pure function (`relaunch_command`) so it is testable. The window
+closes only after the new process started; a declined UAC prompt changes
+nothing. `--security` survives the restart.
+
+**Run comparison** (`report/compare.py`): matched by `finding_id` (rule plus
+fingerprint). "More frequent" per day with `report.compare.increase_factor`
+and `min_count`; "not seen in this window", never "resolved". With differing
+security mode the security indications are left out.
+
+**Time probe** (`probes/timesync.py`, `probe_time.ps1`): event ids 36, 47, 48,
+50, 129, 134 read from the provider manifest on Windows 11 (not from memory).
+W32Time "Stopped / Manual" is the NORMAL state of a workstation outside a
+domain (trigger start) and is not reported as a fault. SNTP (RFC 4330) only to
+private addresses; verified against a local SNTP responder running 5 s fast
+(measured offset 4999.4 ms). Not verified: a real NTP server in a LAN, domain
+members (NT5DS - not measured by design, no nltest).
+
 ## 5. Run directory
 
 ```
-%PROGRAMDATA%\WinEventAI\runs\2026-09-10T14-22-03Z_WS-4711\
+%LOCALAPPDATA%\WinEventAI\runs\2026-09-10T14-22-03Z_WS-4711\
   run.json                 time window, host, account, tool version, TZ offset
   sources.json             per source: status, covered period, figures
   raw\*.ndjson             one record per line, descending by time
@@ -310,7 +354,7 @@ system prompt and the estimate did not. Fixed in `pipeline._explain`.
 
 ## 6. Configuration
 
-Layering: bundled defaults → `%PROGRAMDATA%\WinEventAI\wineventai.yaml` →
+Layering: bundled defaults → `%LOCALAPPDATA%\WinEventAI\wineventai.yaml` →
 `--config` → CLI switches. Lists are **replaced**, not merged.
 
 `config init` writes the file **completely commented out**. Only what someone
@@ -421,7 +465,7 @@ is not exported.
    explain or rule out a finding):
    - Domain controller for Netlogon 5719 - needs a reliable source for the DC
      address without `nltest`. Unsolved.
-   - Time synchronization for W32Time 36/47 - plausible candidate.
+   - ~~Time synchronization~~ - built in 2.3.0 (`probes/timesync.py`).
 8. **Unassessed error groups** from the sweep only get the original Windows
    message. A model description for them would need its own evidence rules.
 

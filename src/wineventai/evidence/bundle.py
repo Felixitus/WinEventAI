@@ -199,3 +199,48 @@ def build_bundle(
 
     get_log().info("Evidence bundle written", file=str(target), files=len(files))
     return target
+
+
+#: Prefix of the core channel sources in ``sources.json``.
+CHANNEL_SOURCE_PREFIX = "channel:"
+
+
+def default_evidence_channels(run: RunDirectory) -> list[str]:
+    """The core channels this run actually read records from.
+
+    The default for the "Create evidence" button: whoever clicks it without
+    choosing wants the originals of exactly what the report is based on.
+    Channels that were empty, locked or disabled are left out - exporting them
+    would either fail or add nothing. The error sweep is left out as well; its
+    channels can number in the hundreds.
+    """
+    from ..collect.base import SourceStatus
+
+    channels: list[str] = []
+    for source in run.read_sources():
+        if not source.source_id.startswith(CHANNEL_SOURCE_PREFIX):
+            continue
+        readable = source.status in (SourceStatus.COLLECTED, SourceStatus.TRUNCATED)
+        if readable and source.records_read:
+            channels.append(source.source_id[len(CHANNEL_SOURCE_PREFIX):])
+    return channels
+
+
+def create_evidence(
+    run: RunDirectory,
+    *,
+    channels: list[str],
+    shell: ShellInfo | None,
+    destination: Path | None = None,
+) -> Path:
+    """Exports the channels (if a shell is there) and packs the bundle.
+
+    The one function behind ``wineventai evidence`` and the GUI button. Without
+    PowerShell the bundle still comes into existence with the normalized
+    extract - and the manifest says that the originals are missing.
+    """
+    target = destination or run.path / f"evidence_{run.read_meta().run_id}.zip"
+    exported: list[tuple[Path, str | None]] = []
+    if channels and shell is not None:
+        exported = export_channels(run, channels, shell=shell, target_dir=run.path / "evtx")
+    return build_bundle(run, target, evtx_files=exported)

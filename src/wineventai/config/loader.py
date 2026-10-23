@@ -3,7 +3,7 @@
 Precedence, weakest first:
 
 1. bundled ``wineventai.default.yaml``
-2. ``%PROGRAMDATA%\\WinEventAI\\wineventai.yaml``
+2. ``%LOCALAPPDATA%\\WinEventAI\\wineventai.yaml``
 3. explicitly passed file (``--config``)
 4. single values from the command line
 
@@ -18,7 +18,7 @@ from typing import Any
 
 import yaml
 
-from ..resources import program_data_dir, resource_path
+from ..resources import data_dir, resource_path
 from .model import Config
 
 DEFAULT_RESOURCE = "config/wineventai.default.yaml"
@@ -53,7 +53,7 @@ def default_config_dict() -> dict[str, Any]:
 
 
 def user_config_path() -> Path:
-    return program_data_dir() / USER_CONFIG_NAME
+    return data_dir() / USER_CONFIG_NAME
 
 
 def default_config_text() -> str:

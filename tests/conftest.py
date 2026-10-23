@@ -6,7 +6,7 @@ Two things are ensured process-wide here:
    that every connection attempt fails the test. Without it an accidental call
    against a locally running Ollama goes unnoticed - it works on the
    development machine and fails in CI.
-2. **No access to %PROGRAMDATA%.** Configuration, rule overlay and knowledge
+2. **No access to %LOCALAPPDATA%.** Configuration, rule overlay and knowledge
    base go into a temporary directory per test run.
 """
 

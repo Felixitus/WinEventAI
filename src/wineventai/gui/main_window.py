@@ -50,6 +50,7 @@ from ..config import Config, load_config
 from ..config.loader import user_config_path, write_user_config
 from . import detail, theme
 from .delegates import SeverityChipDelegate, StatusChipDelegate
+from .elevation import relaunch_elevated
 from .models import (
     CoverageModel,
     FindingsModel,
@@ -59,7 +60,7 @@ from .models import (
     summary_line,
 )
 from .status import Environment, ProbeHandle
-from .worker import RunWorker, WorkerHandle
+from .worker import EvidenceWorker, RunWorker, WorkerHandle
 
 
 def _card(*widgets: QWidget) -> QFrame:
@@ -80,11 +81,12 @@ class MainWindow(QMainWindow):
     UNKNOWN_TAB_INDEX = 2
     AI_LABEL = "Use language model"
 
-    def __init__(self, config: Config | None = None) -> None:
+    def __init__(self, config: Config | None = None, *, security: bool = False) -> None:
         super().__init__()
         self.config = config or load_config()
         self.environment = Environment()
         self._worker: WorkerHandle | None = None
+        self._evidence: WorkerHandle | None = None
         self._probe: ProbeHandle | None = None
         self._run: RunDirectory | None = None
         self._result: AnalysisResult | None = None
@@ -96,6 +98,7 @@ class MainWindow(QMainWindow):
         self._build_menu()
         self._build_body()
         self._set_idle_state()
+        self.check_security.setChecked(security)
         self._start_probe()
 
     # --- Layout --------------------------------------------------------------
@@ -147,6 +150,12 @@ class MainWindow(QMainWindow):
         self.label_summary.setObjectName("Subline")
         layout.addWidget(self.label_headline)
         layout.addWidget(self.label_summary)
+        self.label_compare = QLabel()
+        self.label_compare.setObjectName("Subline")
+        self.label_compare.setWordWrap(True)
+        self.label_compare.hide()
+        layout.addWidget(self.label_compare)
+        layout.addWidget(self._build_actions())
 
         self.label_warning = QLabel()
         self.label_warning.setObjectName("WarningBanner")
@@ -217,12 +226,51 @@ class MainWindow(QMainWindow):
         self.button_cancel.hide()
         layout.addWidget(self.button_cancel)
 
+        self.button_admin = QPushButton("Restart as administrator")
+        self.button_admin.setToolTip(
+            "Starts WinEventAI again with the Windows UAC prompt. Needed for the "
+            "Security channel and the security mode."
+        )
+        self.button_admin.clicked.connect(self._restart_as_admin)
+        self.button_admin.hide()
+        layout.addWidget(self.button_admin)
+
         self.button_start = QPushButton("Start analysis")
         self.button_start.setObjectName("Primary")
         self.button_start.clicked.connect(self._start_run)
         layout.addWidget(self.button_start)
 
         return _card(row)
+
+    def _build_actions(self) -> QWidget:
+        """What to do with a finished run - visible, not hidden in the File menu.
+
+        The menu entries stay; the buttons are for whoever never opens a menu.
+        They appear only once there is a run, so that an empty window does not
+        offer actions that cannot work yet.
+        """
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        self.button_report = QPushButton("Open report")
+        self.button_report.clicked.connect(self._open_report)
+        self.button_folder = QPushButton("Open folder")
+        self.button_folder.clicked.connect(self._open_run_folder)
+        self.button_evidence = QPushButton("Create evidence ZIP")
+        self.button_evidence.setToolTip(
+            "Original .evtx of the collected core channels, report, manifest with "
+            "SHA-256 and verify.ps1. Not pseudonymized - it is evidence."
+        )
+        self.button_evidence.clicked.connect(self._create_evidence)
+        for button in (self.button_report, self.button_folder, self.button_evidence):
+            layout.addWidget(button)
+        layout.addStretch(1)
+
+        self.actions_row = row
+        row.hide()
+        return row
 
     def _build_findings_tab(self) -> QWidget:
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -433,6 +481,9 @@ class MainWindow(QMainWindow):
                 "Nothing can be collected without PowerShell. An existing run "
                 "directory can still be opened (File menu)."
             )
+        self.button_admin.setVisible(env.can_elevate)
+        if env.legacy_note:
+            self._append_log(env.legacy_note)
         if env.rules_error:
             self._append_log(f"Rules: {env.rules_error}")
         if env.ollama_detail:
@@ -458,15 +509,23 @@ class MainWindow(QMainWindow):
 
         config = self._effective_config()
         if existing is None and self.check_security.isChecked() and not self.environment.admin:
-            answer = QMessageBox.question(
-                self,
-                "Without admin rights",
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Icon.Question)
+            box.setWindowTitle("Without admin rights")
+            box.setText(
                 "Security mode needs admin rights. Without them the Security channel "
                 'stays locked and appears as "no permission" - not as "no finding".'
-                "\n\nStart anyway?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
-            if answer != QMessageBox.StandardButton.Yes:
+            elevate = box.addButton(
+                "Restart as administrator", QMessageBox.ButtonRole.AcceptRole
+            )
+            anyway = box.addButton("Start anyway", QMessageBox.ButtonRole.DestructiveRole)
+            box.addButton(QMessageBox.StandardButton.Cancel)
+            box.exec()
+            if box.clickedButton() is elevate:
+                self._restart_as_admin()
+                return
+            if box.clickedButton() is not anyway:
                 return
 
         self._set_busy_state()
@@ -513,7 +572,9 @@ class MainWindow(QMainWindow):
             self.label_warning.hide()
 
         self.coverage_model.set_rows(report.coverage)
-        self.findings_model.set_findings(report.findings)
+        self.findings_model.set_findings(report.findings, report.comparison)
+        self.label_compare.setText(report.comparison.summary())
+        self.label_compare.show()
         self.unknown_model.set_rows(report.unknown_ids)
         self._filter_unknown()
         self.tabs.setTabText(
@@ -529,6 +590,8 @@ class MainWindow(QMainWindow):
 
         self.action_open_report.setEnabled(True)
         self.action_open_folder.setEnabled(True)
+        self.actions_row.show()
+        self.button_evidence.setEnabled(True)
         self._append_log(f"Report: {run.report_dir}")
 
     def _on_failed(self, title: str, text: str) -> None:
@@ -575,6 +638,44 @@ class MainWindow(QMainWindow):
         if self._run is None:
             return
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._run.path)))
+
+    def _create_evidence(self) -> None:
+        if self._run is None or (self._evidence and self._evidence.running):
+            return
+        self.button_evidence.setEnabled(False)
+        worker = EvidenceWorker(self.config, self._run)
+        worker.log_line.connect(self._append_log)
+        worker.finished_ok.connect(self._on_evidence_done)
+        worker.failed.connect(self._on_evidence_failed)
+        self._evidence = WorkerHandle(worker)
+        self._evidence.start()
+
+    def _on_evidence_done(self, path: Path) -> None:
+        self.button_evidence.setEnabled(True)
+        self._append_log(f"Evidence bundle: {path}")
+        QMessageBox.information(
+            self,
+            "Evidence bundle created",
+            f"{path}\n\nCheck it after extracting with verify.ps1. The bundle is not "
+            "pseudonymized - hand it on only where the raw logs may go.",
+        )
+
+    def _on_evidence_failed(self, title: str, text: str) -> None:
+        self.button_evidence.setEnabled(True)
+        self._append_log(f"Evidence: {title}: {text}")
+        QMessageBox.warning(self, title, text)
+
+    def _restart_as_admin(self) -> None:
+        if self._worker and self._worker.running:
+            QMessageBox.information(
+                self, "Run in progress", "Wait for the analysis to finish, then restart."
+            )
+            return
+        if relaunch_elevated(security=self.check_security.isChecked()):
+            self.close()
+            return
+        # Declined UAC prompt or no shell: the current window simply stays.
+        self._append_log("Restart as administrator was cancelled or is not possible.")
 
     def _create_config(self) -> None:
         try:
@@ -627,6 +728,8 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
             self._worker.stop()
+        if self._evidence and self._evidence.running:
+            self._evidence.stop()
         if self._probe:
             self._probe.stop()
         event.accept()

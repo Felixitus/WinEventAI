@@ -7,7 +7,7 @@ git clone https://github.com/Felixitus/WinEventAI.git
 cd WinEventAI
 python -m venv .venv && . .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-python -m pytest -q        # must report 290 passed
+python -m pytest -q        # must report 326 passed
 ruff check src/ tests/     # must be clean
 opencode
 ```

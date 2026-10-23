@@ -20,6 +20,7 @@ from ..normalize.schema import EventRecord
 from ..rules.engine import Finding
 from ..rules.schema import SEVERITY_ORDER, Severity
 from ..security.indicators import SecurityReport
+from .compare import RunComparison
 
 
 class CoverageRow(BaseModel):
@@ -102,6 +103,7 @@ class ReportModel(BaseModel):
     security: SecurityReport = Field(default_factory=SecurityReport)
     raw_appendix: list[EventRecord] = Field(default_factory=list)
     unknown_ids: list[dict[str, object]] = Field(default_factory=list)
+    comparison: RunComparison = Field(default_factory=RunComparison)
 
     # --- Derived -------------------------------------------------------------
 
@@ -158,6 +160,7 @@ def build_report(
     unknown_ids: list[dict[str, object]],
     raw_appendix_limit: int,
     redacted: bool,
+    comparison: RunComparison | None = None,
 ) -> ReportModel:
     """Assembles the report model."""
     visible = [finding for finding in findings if not finding.suppressed]
@@ -190,4 +193,5 @@ def build_report(
         security=security,
         raw_appendix=enrichment.retained[:raw_appendix_limit],
         unknown_ids=unknown_ids,
+        comparison=comparison or RunComparison(),
     )

@@ -146,6 +146,48 @@ class RunWorker(QObject):
         return run
 
 
+class EvidenceWorker(QObject):
+    """Exports the channels and packs the evidence ZIP off the main thread.
+
+    ``wevtutil epl`` on a large System channel takes tens of seconds; in the
+    main thread the window would freeze. Same function as ``wineventai
+    evidence`` - the button adds no logic of its own.
+    """
+
+    log_line = Signal(str)
+    finished_ok = Signal(object)
+    failed = Signal(str, str)
+
+    def __init__(self, config: Config, run: RunDirectory) -> None:
+        super().__init__()
+        self.config = config
+        self.run_dir = run
+
+    def cancel(self) -> None:
+        """Nothing to cancel between steps; the export has its own time limit."""
+
+    def run(self) -> None:
+        from ..collect.shell import PowerShellNotFoundError, find_powershell
+        from ..evidence.bundle import create_evidence, default_evidence_channels
+
+        try:
+            channels = default_evidence_channels(self.run_dir)
+            try:
+                shell = find_powershell(self.config.collect.powershell_preference)
+            except PowerShellNotFoundError:
+                shell = None
+                self.log_line.emit(
+                    "No PowerShell - the bundle contains only the normalized extract."
+                )
+            self.log_line.emit(
+                "Evidence: exporting " + (", ".join(channels) or "no channel") + " ..."
+            )
+            path = create_evidence(self.run_dir, channels=channels, shell=shell)
+            self.finished_ok.emit(path)
+        except Exception as exc:  # noqa: BLE001 - a GUI must never die without a word
+            self.failed.emit(type(exc).__name__, str(exc))
+
+
 class WorkerHandle:
     """Keeps thread and worker together so nothing is collected prematurely.
 
@@ -154,7 +196,7 @@ class WorkerHandle:
     message and is the classic beginner's mistake with Qt threads.
     """
 
-    def __init__(self, worker: RunWorker) -> None:
+    def __init__(self, worker: RunWorker | EvidenceWorker) -> None:
         self.worker = worker
         self.thread = QThread()
         worker.moveToThread(self.thread)

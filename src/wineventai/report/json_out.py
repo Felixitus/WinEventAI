@@ -30,6 +30,7 @@ def render_json(report: ReportModel) -> dict[str, Any]:
             "retention": report.retention_stats,
         },
         "findings": [finding.to_public_dict() for finding in report.findings],
+        "since_previous_run": report.comparison.model_dump(mode="json"),
         "noise": [finding.to_public_dict() for finding in report.noise],
         "boot_sessions": [session.model_dump(mode="json") for session in report.boot_sessions],
         "ai": {

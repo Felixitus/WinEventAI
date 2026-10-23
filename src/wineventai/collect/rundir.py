@@ -22,7 +22,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
 from .. import __version__
-from ..resources import program_data_dir
+from ..resources import data_dir
 from .base import SourceResult
 
 RUN_META = "run.json"
@@ -82,7 +82,7 @@ def is_admin() -> bool:
 
 
 def default_runs_root() -> Path:
-    return program_data_dir() / "runs"
+    return data_dir() / "runs"
 
 
 class RunDirectory:

@@ -16,7 +16,7 @@ from wineventai.config.loader import (
 
 
 def test_the_file_is_not_created_on_its_own() -> None:
-    """A tool that writes into %PROGRAMDATA% unasked is a surprise."""
+    """A tool that writes into %LOCALAPPDATA% unasked is a surprise."""
     load_config()
     assert not user_config_path().exists()
 
@@ -161,3 +161,23 @@ def test_unprintable_characters_do_not_crash_redirected_output() -> None:
     stream.write("C:/Users/\u200eapp.exe")
     stream.flush()
     assert buffer.getvalue() == b"C:/Users/?app.exe"
+
+
+def test_the_data_folder_is_per_user_and_not_shared(monkeypatch) -> None:
+    """Below ProgramData every user may plant files that an admin would load."""
+    import sys
+
+    from wineventai import resources
+
+    monkeypatch.delenv("WINEVENTAI_DATA_DIR", raising=False)
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\someone\AppData\Local")
+    path = resources.data_dir()
+    assert str(path).startswith(r"C:\Users\someone\AppData\Local")
+    assert "ProgramData" not in str(path)
+
+
+def test_the_old_shared_folder_is_never_reported_under_a_test_override() -> None:
+    from wineventai.resources import legacy_shared_data
+
+    assert legacy_shared_data() is None

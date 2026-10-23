@@ -6,4 +6,4 @@ analysis is the run directory (see ``collect.rundir``); everything from the
 normalizer onward reads exclusively from there.
 """
 
-__version__ = "2.2.0"
+__version__ = "2.3.0"

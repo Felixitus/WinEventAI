@@ -1,5 +1,5 @@
 # Bundled defaults. Do not edit - own values belong in
-# %PROGRAMDATA%\WinEventAI\wineventai.yaml or in a file passed via --config.
+# %LOCALAPPDATA%\WinEventAI\wineventai.yaml or in a file passed via --config.
 
 log_level: info
 
@@ -87,7 +87,7 @@ enrich:
   sampling_seed: 1701
 
 rules:
-  overlay_dir: null      # null means %PROGRAMDATA%\WinEventAI\rules
+  overlay_dir: null      # null means %LOCALAPPDATA%\WinEventAI\rules
   suppress_noise: true
   security_mode: false
 
@@ -135,6 +135,8 @@ probes:
   network: true          # DNS server, default gateway, DHCP server
   services: true         # service state for SCM 7000/7009/7031/7034
   storage: true          # health, overall SMART status, usage
+  time: true             # W32Time state; offset only to time sources in the LAN
+  time_max_offset_seconds: 2.0
   timeout_seconds: 30
   ping_count: 3
   ping_timeout_ms: 1500
@@ -142,5 +144,12 @@ probes:
 report:
   formats: [html, md, json]
   redacted: false
+  # Comparison with the previous run of the same machine: new findings,
+  # findings not seen in this window, findings that became more frequent
+  # (per day, because the windows may differ in length).
+  compare:
+    enabled: true
+    increase_factor: 2.0   # at least this many times more per day
+    min_count: 3           # and at least this many hits - 1 -> 2 is no trend
   raw_appendix_limit: 200
   title: "WinEventAI diagnostic report"

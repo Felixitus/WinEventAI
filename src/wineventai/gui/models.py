@@ -14,6 +14,7 @@ from PySide6.QtGui import QColor, QFont
 
 from ..collect.base import INCONCLUSIVE
 from ..normalize.schema import LEVEL_LABEL
+from ..report.compare import RunComparison
 from ..report.model import CoverageRow, ReportModel
 from ..rules.engine import Finding
 from . import theme
@@ -244,11 +245,20 @@ class FindingsModel(QAbstractTableModel):
     def __init__(self, findings: list[Finding] | None = None) -> None:
         super().__init__()
         self._findings: list[Finding] = findings or []
+        self._comparison: RunComparison | None = None
 
-    def set_findings(self, findings: list[Finding]) -> None:
+    def set_findings(
+        self, findings: list[Finding], comparison: RunComparison | None = None
+    ) -> None:
         self.beginResetModel()
         self._findings = findings
+        self._comparison = comparison
         self.endResetModel()
+
+    def _name(self, finding: Finding) -> str:
+        """Rule name, marked if the comparison says it is new or more frequent."""
+        change = self._comparison.change_for(finding.finding_id) if self._comparison else None
+        return f"{finding.rule_name}  [{change.change}]" if change else finding.rule_name
 
     def finding_at(self, index: int) -> Finding | None:
         return self._findings[index] if 0 <= index < len(self._findings) else None
@@ -278,7 +288,7 @@ class FindingsModel(QAbstractTableModel):
                 severity += " ↑"
             return (
                 severity,
-                finding.rule_name,
+                self._name(finding),
                 _fmt_int(finding.group.count),
                 finding.group.last_seen_utc.strftime("%Y-%m-%d %H:%M"),
             )[column]

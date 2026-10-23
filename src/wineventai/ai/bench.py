@@ -41,7 +41,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..config import AiConfig
 from ..enrich.aggregate import Enricher
 from ..normalize.schema import EventRecord
-from ..resources import program_data_dir, read_resource_text
+from ..resources import data_dir, read_resource_text
 from ..rules.engine import Finding, RuleEngine
 from ..rules.loader import load_rules
 from .bundles import SystemContext
@@ -486,7 +486,7 @@ def run_bench(
 
 def default_output_path(now: datetime | None = None) -> Path:
     stamp = (now or datetime.now(UTC)).strftime("%Y-%m-%dT%H-%M-%SZ")
-    return program_data_dir() / "bench" / f"bench-{stamp}.json"
+    return data_dir() / "bench" / f"bench-{stamp}.json"
 
 
 def write_report(report: BenchReport, path: Path) -> Path:

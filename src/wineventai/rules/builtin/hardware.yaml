@@ -80,3 +80,30 @@
     - Look at CBS.log for error lines (collect.log_files).
     - Check free space on the system partition.
     - Does the same update error repeat? Then it is not a random problem.
+
+- id: time-sync-warning
+  name: Time not synchronized (W32Time 36/47/48/50/129/134)
+  match:
+    channel: System
+    provider: Microsoft-Windows-Time-Service
+    event_id: [36, 47, 48, 50, 129, 134]
+  severity: warning
+  meaning: >
+    The Windows time service could not reach a time source (36, 47), could not
+    resolve or find one (48, 129, 134), or detected a larger time difference
+    (50). A wrong clock is not cosmetic: Kerberos refuses tickets from a skew
+    of five minutes on, certificates appear not yet valid, and every timeline
+    is shifted.
+  typical_causes:
+    - Time source unreachable (firewall, UDP 123 blocked, VPN)
+    - Name of the time source not resolvable
+    - Domain member without reachable domain controller
+    - Virtual machine taking the time from the host and from NTP at once
+  recommended_checks:
+    - Compare the clock with a reliable source.
+    - Check that UDP 123 to the configured time source is allowed.
+    - "On domain members: is a domain controller reachable?"
+  threshold:
+    count_min: 1
+    escalate_above: 50
+    escalate_to: error
