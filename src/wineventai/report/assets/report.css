@@ -31,7 +31,9 @@ body {
 
 header.doc { padding-block: 40px 26px; border-bottom: 2px solid var(--ink); }
 .kicker { font-family: Consolas, ui-monospace, monospace; font-size: 11px;
-  letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+  letter-spacing: .14em; text-transform: uppercase; color: var(--accent);
+  display: flex; align-items: center; gap: 10px; }
+.kicker .logo svg { width: 28px; height: 28px; display: block; }
 h1 { font-size: clamp(26px, 5vw, 38px); line-height: 1.12; margin: 10px 0 6px;
   text-wrap: balance; letter-spacing: -.01em; }
 .headline { font-size: 18px; color: var(--ink-soft); margin: 0 0 20px; max-width: 60ch; }

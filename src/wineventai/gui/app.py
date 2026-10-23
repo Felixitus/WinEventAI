@@ -33,6 +33,41 @@ def gui_available() -> bool:
     return find_spec("PySide6") is not None
 
 
+ICON_RESOURCE = "gui/assets/wineventai.ico"
+
+#: Own taskbar identity. Without it Windows groups a window started via
+#: ``python -m wineventai gui`` under python.exe and shows the Python icon,
+#: however often the window sets its own.
+APP_USER_MODEL_ID = "WinEventAI.Diagnostics"
+
+
+def app_icon() -> object:
+    """The program icon as QIcon - an empty icon if the file is missing.
+
+    A missing icon is cosmetic; it must never keep the window from opening.
+    """
+    from PySide6.QtGui import QIcon
+
+    from ..resources import resource_path
+
+    try:
+        return QIcon(str(resource_path(ICON_RESOURCE)))
+    except FileNotFoundError:
+        return QIcon()
+
+
+def _set_taskbar_identity() -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+    except (AttributeError, OSError):
+        # Cosmetic only: the taskbar then shows the icon of the host process.
+        return
+
+
 def run_gui(config: Config | None = None) -> int:
     """Starts the window and returns the exit code of the application."""
     if not gui_available():
@@ -48,6 +83,8 @@ def run_gui(config: Config | None = None) -> int:
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setApplicationName("WinEventAI")
     app.setOrganizationName("WinEventAI")
+    _set_taskbar_identity()
+    app.setWindowIcon(app_icon())
 
     window = MainWindow(config or load_config())
     window.show()

@@ -13,6 +13,9 @@ from PyInstaller.utils.hooks import collect_submodules
 ROOT = Path(SPECPATH).parent  # noqa: F821 - set by PyInstaller
 PACKAGE = ROOT / "src" / "wineventai"
 
+# Program icon, generated from docs/logo.svg by packaging/make_icons.py.
+ICON = str(PACKAGE / "gui" / "assets" / "wineventai.ico")
+
 # Bundled resources. resource_path() later finds them via sys._MEIPASS or
 # the directory next to the EXE - the rest of the code knows nothing of it.
 datas = [
@@ -25,6 +28,7 @@ datas = [
     (str(PACKAGE / "ai" / "bench_cases.yaml"), "wineventai/ai"),
     (str(PACKAGE / "report" / "templates"), "wineventai/report/templates"),
     (str(PACKAGE / "report" / "assets"), "wineventai/report/assets"),
+    (str(PACKAGE / "gui" / "assets"), "wineventai/gui/assets"),
 ]
 
 # Collect Qt only if it is there: the command line must also build without
@@ -82,6 +86,7 @@ exe = EXE(  # noqa: F821
     [],
     exclude_binaries=True,
     name="wineventai",
+    icon=ICON,
     console=True,
     disable_windowed_traceback=False,
     upx=False,  # UPX is exactly the packer signature we want to avoid
@@ -98,6 +103,7 @@ if HAS_QT:
         [],
         exclude_binaries=True,
         name="wineventai-gui",
+        icon=ICON,
         console=False,
         disable_windowed_traceback=False,
         upx=False,

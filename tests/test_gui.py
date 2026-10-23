@@ -429,3 +429,26 @@ def test_the_main_window_fills_the_tab_without_assessment(qapp, fixture_run) -> 
         if window._probe:
             window._probe.stop()
         window.close()
+
+
+def test_the_program_icon_carries_a_small_and_a_large_size() -> None:
+    """Windows picks the matching size; without 16 px it scales the 256 px image down to mush."""
+    import struct
+
+    from wineventai.gui.app import ICON_RESOURCE
+    from wineventai.resources import resource_path
+
+    data = resource_path(ICON_RESOURCE).read_bytes()
+    reserved, kind, count = struct.unpack_from("<HHH", data, 0)
+    assert (reserved, kind) == (0, 1), "not an ICO file"
+    edges = {struct.unpack_from("<B", data, 6 + 16 * index)[0] for index in range(count)}
+    assert {16, 24, 32, 48}.issubset(edges)
+    assert 0 in edges, "256 px is written as 0 in the ICO directory"
+
+
+def test_the_window_gets_the_program_icon(qapp) -> None:
+    from wineventai.gui.app import app_icon
+
+    icon = app_icon()
+    assert not icon.isNull()
+    assert icon.availableSizes(), "the ICO must be readable by Qt"

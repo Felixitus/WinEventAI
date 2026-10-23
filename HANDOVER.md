@@ -1,6 +1,6 @@
 # WinEventAI - Handover
 
-**Version 2.1.0 · 286 tests green · ruff clean · as of 23 Oct 2026**
+**Version 2.2.0 · 290 tests green · ruff clean · as of 23 Oct 2026**
 
 This file is the complete state of knowledge for further development outside
 the original session. The working contract is in `AGENTS.md`; this file holds
@@ -11,7 +11,7 @@ scope, rationale and open items.
 ## 1. Scope
 
 ~12,700 lines of Python in 76 modules, 9 PowerShell collection/probe scripts,
-30 rules in 6 YAML files, 286 tests in 16 files.
+30 rules in 6 YAML files, 290 tests in 16 files.
 
 | Package | Lines | Task |
 |---|---:|---|
@@ -340,6 +340,13 @@ anyway.
   documented SHA-256.
 - `resources.py` is the only place that knows `_MEIPASS`, the EXE directory
   and `importlib.resources`.
+- Icon: `docs/logo.svg` (32 px and up) and `docs/logo-small.svg` (16/24 px,
+  without the lens, which blurs at that size). `packaging/make_icons.py`
+  renders both into `gui/assets/wineventai.ico` with Qt's SVG renderer and
+  copies the logo to `report/assets/` for the inline header. Run it after
+  changing an SVG; the generated files are versioned so that a build needs
+  no extra step. The window sets an AppUserModelID - otherwise a GUI started
+  via `python -m` groups under python.exe in the taskbar.
 
 ## 8. Evidence
 

@@ -145,3 +145,15 @@ def test_the_golden_report_stays_stable(fixture_run, tmp_path) -> None:
     golden.write_text(first, encoding="utf-8")
     assert "## 1 · Coverage" in first
     assert "Unclean restart" in first
+
+
+def test_the_logo_is_embedded_and_not_linked(fixture_run) -> None:
+    """The report must not reach into the network or the file system when opened."""
+    from wineventai.analyze import analyze_run
+    from wineventai.config import load_config
+    from wineventai.report.html import render_html
+
+    report = analyze_run(fixture_run, load_config(overrides={"ai": {"enabled": False}})).report
+    html = render_html(report)
+    assert '<span class="logo" aria-hidden="true"><svg' in html
+    assert "<img" not in html

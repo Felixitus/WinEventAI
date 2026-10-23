@@ -75,7 +75,7 @@ language model.
 ```bash
 pip install -e ".[dev]"      # development (PySide6 included)
 pip install -e ".[gui]"      # user interface only
-python -m pytest -q          # 286 tests, all must be green
+python -m pytest -q          # 290 tests, all must be green
 ruff check src/ tests/       # must be clean
 ```
 

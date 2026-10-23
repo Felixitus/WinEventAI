@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- WinEventAI logo: an event log whose lines are triaged by severity,
+       read through a lens. Colours from gui/theme.py (ACCENT, CRIT, WARN, INFO). -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8a62a3"/>
+      <stop offset="1" stop-color="#4b3259"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="url(#bg)"/>
+  <!-- log lines -->
+  <circle cx="60" cy="68" r="13" fill="#f0b341"/>
+  <rect x="86" y="57" width="118" height="22" rx="11" fill="#ffffff" fill-opacity="0.55"/>
+  <circle cx="60" cy="114" r="13" fill="#ef5a4f"/>
+  <rect x="86" y="103" width="118" height="22" rx="11" fill="#ffffff"/>
+  <circle cx="60" cy="160" r="13" fill="#8db4ea"/>
+  <rect x="86" y="149" width="40" height="22" rx="11" fill="#ffffff" fill-opacity="0.55"/>
+  <!-- lens -->
+  <circle cx="168" cy="172" r="36" fill="#ffffff" fill-opacity="0.16" stroke="#ffffff" stroke-width="14"/>
+  <line x1="194" y1="198" x2="222" y2="226" stroke="#ffffff" stroke-width="18" stroke-linecap="round"/>
+</svg>

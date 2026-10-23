@@ -10,7 +10,7 @@
 <div class="wrap">
 
 <header class="doc">
-  <div class="kicker">WinEventAI {{ report.meta.tool_version }}{% if report.redacted %} · pseudonymized version{% endif %}</div>
+  <div class="kicker"><span class="logo" aria-hidden="true">{{ logo | safe }}</span>WinEventAI {{ report.meta.tool_version }}{% if report.redacted %} · pseudonymized version{% endif %}</div>
   <h1>{{ report.title }}</h1>
   <p class="headline">{{ report.headline }}</p>
   <dl class="meta">

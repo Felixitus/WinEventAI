@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo.svg" width="128" alt="WinEventAI logo"></p>
+
 # WinEventAI
 
 Local diagnostic tool for Windows. Reads event logs and further system

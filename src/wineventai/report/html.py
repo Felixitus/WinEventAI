@@ -20,6 +20,9 @@ from .timeline_svg import render_timeline
 
 TEMPLATE_NAME = "report.html.j2"
 STYLESHEET = "report/assets/report.css"
+#: Inline, not linked: the report is one file without external resources.
+#: A copy of docs/logo.svg, written by packaging/make_icons.py.
+LOGO = "report/assets/logo.svg"
 
 
 def _format_datetime(value: datetime | None) -> str:
@@ -69,6 +72,7 @@ def render_html(report: ReportModel) -> str:
     return template.render(
         report=report,
         css=read_resource_text(STYLESHEET),
+        logo=read_resource_text(LOGO),
         timeline=timeline,
     )
 

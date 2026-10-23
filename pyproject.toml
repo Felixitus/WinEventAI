@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wineventai"
-version = "2.1.0"
+version = "2.2.0"
 description = "Local diagnostic tool for Windows event logs with an optional local language model"
 requires-python = ">=3.11"
 dependencies = [
@@ -38,6 +38,9 @@ wineventai = [
     "ai/*.yaml",
     "report/templates/*.j2",
     "report/assets/*.css",
+    "report/assets/*.svg",
+    "gui/assets/*.ico",
+    "gui/assets/*.png",
 ]
 
 [tool.ruff]
