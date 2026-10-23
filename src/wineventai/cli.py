@@ -38,6 +38,7 @@ from .collect.shell import (
 )
 from .config import Config, load_config
 from .config.loader import user_config_path
+from .console import harden_console_streams
 from .kb.store import KnowledgeBase
 from .rules.loader import RuleLoadError, load_rules, overlay_dir
 
@@ -137,6 +138,7 @@ def main(
         bool, typer.Option("--version", help="Print the version and exit.")
     ] = False,
 ) -> None:
+    harden_console_streams()
     if version:
         typer.echo(f"WinEventAI {__version__}")
         raise typer.Exit()

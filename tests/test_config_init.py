@@ -147,3 +147,17 @@ def test_only_the_gui_exe_starts_the_user_interface() -> None:
     assert wants_gui(r"C:\Program Files\wineventai\wineventai-gui.exe", frozen=True)
     assert not wants_gui(r"C:\Program Files\wineventai\wineventai.exe", frozen=True)
     assert not wants_gui(r"C:\Python\python.exe", frozen=False)
+
+
+def test_unprintable_characters_do_not_crash_redirected_output() -> None:
+    """U+200E from a Windows message ended 'kb unknown' when redirected."""
+    import io
+
+    from wineventai.console import harden_console_streams
+
+    buffer = io.BytesIO()
+    stream = io.TextIOWrapper(buffer, encoding="cp1252")
+    harden_console_streams(stream)
+    stream.write("C:/Users/\u200eapp.exe")
+    stream.flush()
+    assert buffer.getvalue() == b"C:/Users/?app.exe"
